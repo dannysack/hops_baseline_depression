@@ -1,0 +1,2834 @@
+---
+title: "HoPS+ Baseline Data"
+author: "Danny Sack<br><small>Division of Epidemiology<br>Vanderbilt University School of Medicine</small>"
+date: "<small>`r Sys.Date()`</small>"
+output:
+  rmdformats::readthedown:
+    code_folding: hide
+    lightbox: true
+    code_download: true
+description: "HoPS+ Baseline Data"
+---
+
+```{r setup, include=FALSE}
+library(plyr)
+library(tidyverse)
+library(rms)
+library(plotly)
+library(kableExtra)
+library(table1)
+library(ggpubr)
+library(ggridges)
+library(lubridate)
+library(foreign)
+library(metafor)
+library(PResiduals)
+library(ggdist)
+library(flextable)
+library(forestplot)
+library(extrafont)
+loadfonts()
+knitrSet(lang='markdown', fig.path='png/', fig.align='center', w=6, h=4, cache=TRUE)
+options(prType='html')
+set.seed(1111)
+```
+
+# Descriptive Tables
+
+```{r desctab1}
+Load(cleaned)
+
+# add PHQ-9 category
+
+cleaned$phq9_cat <- NA
+cleaned$phq9_cat[cleaned$phq9 < 5] <- "Minimal"
+cleaned$phq9_cat[cleaned$phq9 > 4 & cleaned$phq9 < 10] <- "Mild"
+cleaned$phq9_cat[cleaned$phq9 > 9 & cleaned$phq9 < 15] <- "Moderate"
+cleaned$phq9_cat[cleaned$phq9 > 14 & cleaned$phq9 < 20] <- "Moderately Severe"
+cleaned$phq9_cat[cleaned$phq9 > 19] <- "Severe"
+cleaned$phq9_cat <- factor(cleaned$phq9_cat, levels = c("Minimal", "Mild",
+                                                        "Moderate", "Moderately Severe",
+                                                        "Severe"))
+
+# add other PHQ-9 Category
+# none 0-4, clinical judgement 5-14, treatment warranted 15-27
+cleaned$phq9_cat2 <- NA
+cleaned$phq9_cat2[cleaned$phq9 < 5] <- "No Action"
+cleaned$phq9_cat2[cleaned$phq9 > 4 & cleaned$phq9 < 15] <- "Clinical Judgement"
+cleaned$phq9_cat2[cleaned$phq9 > 14] <- "Treatment Warranted"
+cleaned$phq9_cat2 <- factor(cleaned$phq9_cat2, levels = c("No Action", 
+                                                          "Clinical Judgement",
+                                                          "Treatment Warranted"))
+
+# add other PHQ-9 Dichotomous
+cleaned$phq9_dich <- NA
+cleaned$phq9_dich[cleaned$phq9 < 10] <- "No"
+cleaned$phq9_dich[cleaned$phq9 > 4 & cleaned$phq9 < 15] <- "Yes"
+cleaned$phq9_dich <- factor(cleaned$phq9_dich, levels = c("No", 
+                                                          "Yes"))
+
+# add some labels
+#label(cleaned$clinic) <- "Clinic"
+label(cleaned$age) <- "Age"
+units(cleaned$age) <- "years"
+cleaned$year_fac <- as.factor(cleaned$year)
+label(cleaned$year_fac) <- "Enrollment Year"
+label(cleaned$sex) <- "Sex"
+label(cleaned$district) <- "District"
+label(cleaned$rel_stat) <- "Relationship Status"
+label(cleaned$edu_cat) <- "Education"
+label(cleaned$job_cat) <- "Occupation"
+label(cleaned$study_status) <- "Study Status"
+label(cleaned$art_hx) <- "Previous Antiretroviral Therapy"
+label(cleaned$WHO_clinical_stage_at_art_initiation) <- "WHO Clinical Stage"
+label(cleaned$bmi) <- "Body Mass Index"
+label(cleaned$stigma_com) <- "Perceived Community Stigma"
+label(cleaned$stigma_pt) <- "Participant Felt/Experienced Stigma"
+label(cleaned$trust) <- "Physician Trust"
+label(cleaned$cog_emp) <- "Cognitive Empathy"
+label(cleaned$aff_emp) <- "Affective Empathy"
+label(cleaned$soc_sup_ps) <- "Perceived Support"
+label(cleaned$soc_sup_ns) <- "Needed Support"
+label(cleaned$hivk) <- "HIV Knowledge (0-27)"
+label(cleaned$phq9) <- "Patient Health Questionaire-9 (0-27)"
+label(cleaned$phq9_cat) <- "Patient Health Questionaire-9"
+
+table1(~ year_fac + age + district + rel_stat + edu_cat + job_cat + 
+         art_hx + WHO_clinical_stage_at_art_initiation + bmi +
+         stigma_com + stigma_pt + soc_sup_ps + soc_sup_ns +
+         cog_emp + aff_emp + hivk + phq9 + phq9_cat | sex, data = cleaned, 
+       render.continuous = c(.="Median [Q1, Q3]"), overall = FALSE)
+```
+
+# Categorical Covariates
+
+```{r figs_cat, fig.height=9, fig.width=8}
+# relabel
+Hmisc::label(cleaned$district) <- "District"
+Hmisc::label(cleaned$rel_stat) <- "Relationship Status"
+Hmisc::label(cleaned$edu_cat) <- "Education"
+Hmisc::label(cleaned$job_cat) <- "Occupation"
+Hmisc::label(cleaned$study_status) <- "Study Status"
+Hmisc::label(cleaned$WHO_clinical_stage_at_art_initiation) <- "WHO Clinical Stage"
+
+p <- summary(district + rel_stat + edu_cat + job_cat + WHO_clinical_stage_at_art_initiation ~ sex, 
+             overall = FALSE, data = cleaned)
+plot(p, main = "", family = "serif", pch = c(1, 16))
+legend("topright", legend = unique(cleaned$sex), pch = c(1, 16))
+```
+
+# Continuous Covariates
+
+```{r figs_cont}
+# want to make distributions of covariates stratified by group and faceted by sex
+
+# function for continuous covariates
+cont_plot <- function(x, lab) {
+  ggplot(cleaned, aes(x, sex)) +
+  geom_density_ridges(fill = "#D8AB4C") +
+  xlab(lab) + ylab("") + theme_ridges()
+}
+```
+
+## Enrollment Date
+
+```{r}
+cont_plot(cleaned$reg_date, "Enrollment Date")
+```
+
+## Age
+
+```{r}
+# age
+cont_plot(cleaned$age, "Age")
+```
+
+## BMI
+
+```{r}
+#bmi
+cont_plot(cleaned$bmi, "Body Mass Index")
+```
+
+## Empathy
+
+```{r}
+# cognitive empathy
+cont_plot(cleaned$cog_emp, "Cognitive Empathy")
+```
+
+```{r}
+# affective empathy
+cont_plot(cleaned$aff_emp, "Affective Empathy")
+```
+
+## HIV Knowledge
+
+```{r}
+# hiv knowledge
+cont_plot(cleaned$hivk, "HIV Knowledge")
+```
+
+## Depression
+
+```{r}
+# phq
+cont_plot(cleaned$phq9, "Patient Health Questionaire-9")
+```
+
+# Modeling
+
+```{r mod_data_prep, eval=FALSE}
+# need to edit cleaned dataset to be ready for modeling
+# this will include adding a column with partner PHQ-9 
+# this will also include renaming columns for nicer figures
+
+# variables of interest: 
+  # participant’s time (in days) from the first participant’s enrollment (continuous), 
+  # age (continuous), 
+  # district (categorical), 
+  # relationship status (categorical), 
+  # education (categorical), 
+  # occupation (categorical), 
+  # WHO HIV clinical stage (ordinal), 
+  # body mass index (continuous), 
+  # antiretroviral therapy status 
+    # (new user versus restarting after greater than 60 days off treatment),
+  # partner’s PHQ-9 score (continuous)
+
+# start by starting a new dataframe removing irrelevant items
+data <- cleaned %>% 
+  mutate(stigma = stigma_pt + stigma_com,
+         socsup = soc_sup_ps + soc_sup_ns) %>% 
+  select(record_id, clinic, pt_id:day, sex:job_cat,
+         WHO_clinical_stage_at_art_initiation, 
+         stigma, socsup,
+         art_hx, bmi, phq9, phq9_cat, phq9_cat2,
+         phq9_dich) 
+
+# now add a column for partner's PHQ-9 score
+# inititate colum
+data$partner_phq <- NA
+# loop through and update row if record id matches and sex does not
+# not the fasted, but gets the job done
+for(i in 1:nrow(data)){
+  for(j in 1:nrow(data)){
+    if(data$record_id[i] == data$record_id[j] & data$sex[i] != data$sex[j]){
+      data$partner_phq[i] <- data$phq9[j]
+    }
+  }
+}
+
+# now update data with labels
+data <- upData(data, 
+               rename = c(WHO_clinical_stage_at_art_initiation = "who_stage"),
+               labels = c(record_id = "Record ID",
+                          clinic = "Clinic",
+                          pt_id = "Patient ID",
+                          day = "Enrollment Day",
+                          stigma = "Total Stigma",
+                          socsup = "Total Social Support",
+                          partner_phq = "Partner PHQ-9 Score",
+                          phq9_cat2 = "Intended Action",
+                          phq9_dich = "Dichotomized PHQ-9"))
+
+# make list of labs
+#labs <- data %>% map_chr(~attributes(.)$label)
+
+# now add attributes as a label
+#attr(data, "var.labels") <- labs
+
+# export to stata for Ariano
+#write.dta(data, "hops_dep_baseline.dta")
+
+# export to R for me
+Save(data, "hops_dep_baseline")
+```
+
+## Primary Analysis
+
+### Descriptives
+
+```{r desc_mod_data, results='asis'}
+Load(hops_dep_baseline)
+
+# export de-identified version for Bryan
+#hops_dep_baseline %>% 
+#  mutate(cluster = as.numeric(clinic)) %>%
+#  select(record_id, clinic, cluster, sex, phq9) %>% 
+#  pivot_wider(names_from = sex, values_from = phq9) %>%
+#  rowid_to_column() %>%
+#  select(-record_id, -clinic) %>%
+#  Save(., "baseline_hops_dep_deid")
+
+# combine who_stage categories to avoid small N in imputation
+hops_dep_baseline <- hops_dep_baseline %>% mutate(day = as.numeric(day))
+hops_dep_baseline <- upData(hops_dep_baseline,
+                            labels = c(day = "Day"))
+
+# converge categories with fewer than 10 instances
+mod_data <- hops_dep_baseline 
+mod_data$who_stage <- fct_collapse(mod_data$who_stage,
+               I = c("I"),
+               II = c("II"),
+               `III/IV` = c("III", "IV"))
+
+# split into female and male dataframe
+female <- mod_data %>% filter(sex == "Female")
+male <- mod_data %>% filter(sex == "Male")
+
+# describe both
+html(describe(female))
+html(describe(male))
+
+# condense categories with fewer than 10
+female$job_cat <- fct_collapse(female$job_cat,
+                               Farmer = c("Farmer"),
+                               Domestic = c("Domestic"),
+                               Other = c("Other", "Fisher", "Trader"))
+
+# now impute both when non-missing phq-9, otherwise issues
+
+# raw correlations
+cor.test(female$phq9, female$partner_phq, method = "spearman")
+cor.test(male$phq9, male$partner_phq, method = "spearman")
+
+# female
+imp_female <- aregImpute(~ district + age + day + rel_stat +
+                           edu_cat + job_cat + bmi + art_hx +
+                           stigma + socsup +
+                           who_stage + partner_phq + phq9, 
+                         data = female %>% filter(!is.na(phq9)), 
+                         n.impute = 20, pr = FALSE)
+
+# male
+imp_male <- aregImpute(~ district + age + day + rel_stat +
+                         edu_cat + job_cat + bmi + art_hx +
+                         stigma + socsup +
+                         who_stage + partner_phq + phq9, 
+                         data = male %>% filter(!is.na(phq9)), 
+                       n.impute = 20, pr = FALSE)
+```
+
+### Female Model
+
+```{r female_mod, results = 'asis', message=FALSE, warning=FALSE}
+# make datadist for plotting
+dd <- datadist(female)
+options(datadist = 'dd')
+
+fem_mod <- fit.mult.impute(phq9 ~ district + rcs(age, 3) + 
+                             rcs(as.numeric(day), 3) + 
+                             rel_stat + edu_cat + job_cat + 
+                             rcs(bmi, 3) +
+                             who_stage + art_hx +
+                             rcs(stigma, 3) + rcs(socsup, 3) +
+                             rcs(partner_phq, 3),
+                           orm, imp_female, 
+                           data = female %>% filter(!is.na(phq9)), 
+                           pr = FALSE)
+
+# print model output
+print(fem_mod)
+
+# print anova
+print(anova(fem_mod))
+# save
+anv_fem <- anova(fem_mod)
+
+# check PO assumption
+# categorical covariates
+
+
+# check model assumptions for continuous covariates
+par(mfrow=c(3,2))
+plot.xmean.ordinaly(phq9 ~ age + day + bmi + stigma + socsup + partner_phq, 
+                    data = female, topcats = 3,
+                    subn = FALSE)
+title(main = "Comparing the means of X|Y with (dashed) and without (solid)",
+      sub = "Testing Proportional Odds Assumption in Females",
+      line = -1,
+      outer = TRUE)
+
+# spearman correlation
+cor.test(female$phq9, female$partner_phq, method = "spearman")
+
+# covariate adjusted correlation
+partial_Spearman(phq9 | partner_phq ~ district + rcs(age, 3) + 
+                      rcs(as.numeric(day), 3) + 
+                      rel_stat + edu_cat + job_cat + 
+                      rcs(bmi, 3) +
+                      rcs(stigma, 3) + rcs(socsup, 3) +
+                      who_stage + art_hx, 
+                 data = female %>% filter(!is.na(phq9)))
+
+# update model so we can validate it.
+fem_mod1 <- update(fem_mod, x = TRUE, y = TRUE)
+
+# validate
+fem_val <- validate(fem_mod1, method = "boot", B = 1000)
+html(fem_val)
+```
+
+```{r female_mod_out, fig.width=8, fig.height=8}
+# summary
+# ages 20, 25 (ref), 30
+# days 250, 500 (ref), 750
+# bmi 18.5, 25 (ref), 30
+# stigma 20, 30 (ref), 40
+# soc sup 40, 50 (ref), 60
+# phq 0, 5, 10 (ref), 15
+fem_sum <- as.data.frame(summary(fem_mod, age = c(25, 20), 
+                                 day = c(500, 250),
+                                 bmi = c(25, 18.5), 
+                                 stigma = c(30, 20),
+                                 socsup = c(50, 40),
+                                 partner_phq = c(5, 0))) %>% 
+  rownames_to_column(., var = "Covariate")
+
+fem_sum1 <- as.data.frame(summary(fem_mod, age = c(25, 30), 
+                                 day = c(500, 750),
+                                 bmi = c(25, 30), 
+                                 stigma = c(30, 40),
+                                 socsup = c(50, 60),
+                                 partner_phq = c(5, 10))) %>% 
+  rownames_to_column(., var = "Covariate") %>%
+  filter(Low %in% c(25, 500, 30, 50, 5))
+
+fem_sum <- rbind(fem_sum, fem_sum1)
+
+# pull out row names as vector
+fem_sum_names <- fem_sum %>% filter(Type == 1) %>% 
+  select(Covariate) %>% as_vector()
+
+# make nice labels
+fem_labs <- c("Age (20 vs. 25)",
+              "Registration Day (250 vs. 500)",
+              "Body Mass Index (18.5 vs. 25)",
+              "Total Stigma (20 vs. 30)",
+              "Social Support (40 vs. 50)",
+              "Partner's PHQ-9 (0 vs. 5)",
+              "Inhassunge",
+              "Namacurra",
+              "Mocubela",
+              "Maganja da Costa",
+              "Gilé",
+              "Quelimane",
+              "Single",
+              "Married",
+              "None",
+              "Completed Primary School (Grade 7)",
+              "Some Secondary School (Grades 8-10)",
+              "Completed Secondary School (Grade 10)",
+              "College/Higher Education",
+              "Domestic",
+              "Other",
+              "II",
+              "III or IV",
+              "Yes",
+              "Age (30 vs. 25)",
+              "Registration Day (750 vs. 500)",
+              "Body Mass Index (30 vs. 25)",
+              "Total Stigma (40 vs. 30)",
+              "Social Support (60 vs. 50)",
+              "Partner's PHQ-9 (10 vs. 5)")
+
+# now just get ORs
+fem_sum_ors <- fem_sum %>% filter(Type == 2) %>% # filter to ORs
+  mutate(Covariate = fem_sum_names) %>%
+  mutate(Label = fem_labs) %>%
+  arrange(Covariate)
+
+# now make nice table and export it
+fem_sum_ors %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = FALSE, fixed_thead = TRUE) %>%
+  scroll_box(width = "800px", height = "500px") 
+
+# write out
+#fem_sum_ors %>% 
+#  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+#  write_csv("analysis_output/fem_mod1.csv")
+
+# print partial effects plots for continuous covariates
+qu_fem <- Quantile(fem_mod)
+med_fem <- function(x) qu_fem(.5, x)
+ggplot(Predict(fem_mod, fun = med_fem))
+
+fem_age <- ggplot(Predict(fem_mod, age, fun = med_fem)) +
+  labs(caption = "") + theme_pubclean() +
+  xlab("years") +
+  coord_cartesian(ylim = c(0, 4))
+
+fem_bmi <- ggplot(Predict(fem_mod, bmi, fun = med_fem)) +
+  labs(caption = "") + theme_pubclean() +
+  xlab(expression(kg/m^2)) +
+  coord_cartesian(ylim = c(0, 4))
+
+fem_day <- ggplot(Predict(fem_mod, day, fun = med_fem)) +
+  labs(caption = "") + theme_pubclean() +
+  xlab("day") +
+  coord_cartesian(ylim = c(0, 4))
+
+fem_part <- ggplot(Predict(fem_mod, partner_phq, fun = med_fem)) +
+  labs(caption = "") + theme_pubclean() +
+  xlab("Partner's PHQ-9 Score") +
+  ylab("Median Predicted PHQ-9 Score")
+
+fem_stigma <- ggplot(Predict(fem_mod, stigma, fun = med_fem)) +
+  labs(caption = "") + theme_pubclean() +
+  coord_cartesian(ylim = c(0, 4))
+
+fem_ss <- ggplot(Predict(fem_mod, socsup, fun = med_fem)) +
+  labs(caption = "") + theme_pubclean() +
+  coord_cartesian(ylim = c(0, 4))
+
+# make small plot with inconsequential things
+fem_p_small <- ggarrange(fem_age, fem_bmi, fem_day, fem_stigma, fem_ss, 
+                         labels = c("b. Age", "c. Body Mass Index",
+                                    "d. Enrollment Day", "e. Stigma",
+                                    "f. Social Support"),
+                         ncol = 1,
+                         hjust = 0,
+                         vjust = 0)
+# make one large one
+fem_pps <- ggarrange(fem_part, fem_p_small, 
+          nrow = 1,
+          widths = c(3, 1),
+          labels = c("a. Partners Depressive Sypmtoms", ""),
+          hjust = -0.1,
+          vjust = 0)
+
+annotate_figure(fem_pps,
+                top = text_grob("Predictors of Depressive Symptoms in Females \n",
+                                hjust = 0.6,
+                                size = 20,
+                                face = "bold"))
+#ggsave("analysis_output/fem_mod_pp.png", units = "in",
+#       width = 8, height = 8)
+```
+
+### Male Model
+
+```{r male_mod, results = 'asis', message=FALSE, warning=FALSE}
+# make datadist for plotting
+dd <- datadist(male)
+options(datadist = 'dd')
+
+m_mod <- fit.mult.impute(phq9 ~ district + rcs(age, 3) + 
+                             rcs(as.numeric(day), 3) + 
+                             rel_stat + edu_cat + job_cat + 
+                             rcs(bmi, 3) +
+                             who_stage + art_hx +
+                           rcs(stigma, 3) + rcs(socsup, 3) +
+                           rcs(partner_phq, 3),
+                         orm, imp_male, 
+                         data = male %>% filter(!is.na(phq9)),
+                         pr = FALSE)
+
+# print model output
+print(m_mod)
+
+# print anova
+print(anova(m_mod))
+# save
+anv_m <- anova(m_mod)
+
+# check model assumptions for continuous covariates
+par(mfrow=c(3,2))
+plot.xmean.ordinaly(phq9 ~ age + day + bmi + partner_phq + stigma + socsup, 
+                    data = male, topcats = 3,
+                    subn = FALSE)
+title(main = "Comparing the means of X|Y with (dashed) and without (solid)",
+      sub = "Testing Proportional Odds Assumption in Males",
+      line = -1,
+      outer = TRUE)
+
+# spearman correlation
+cor.test(male$phq9, male$partner_phq, method = "spearman")
+
+# covariate adjusted correlation
+partial_Spearman(phq9 | partner_phq ~ district + rcs(age, 3) + 
+                      rcs(as.numeric(day), 3) + 
+                      rel_stat + edu_cat + job_cat + 
+                      rcs(bmi, 3) +
+                      rcs(stigma, 3) + rcs(socsup, 3) +
+                      who_stage + art_hx, 
+                 data = male %>% filter(!is.na(phq9)))
+
+# update model so we can validate it
+m_mod1 <- update(m_mod, x = TRUE, y = TRUE)
+
+# validate
+m_val <- validate(m_mod1, method = "boot", B = 1000)
+html(m_val)
+```
+
+```{r male_mod_output, fig.width=8, fig.height=8}
+# summary
+m_sum <- as.data.frame(summary(m_mod, age = c(25, 20), 
+                                 day = c(500, 250),
+                                 bmi = c(25, 18.5), 
+                                 stigma = c(30, 20),
+                                 socsup = c(50, 40),
+                                 partner_phq = c(5, 0))) %>% 
+  rownames_to_column(., var = "Covariate")
+
+m_sum1 <- as.data.frame(summary(m_mod, age = c(25, 30), 
+                                 day = c(500, 750),
+                                 bmi = c(25, 30), 
+                                 stigma = c(30, 40),
+                                 socsup = c(50, 60),
+                                 partner_phq = c(5, 10))) %>% 
+  rownames_to_column(., var = "Covariate") %>%
+  filter(Low %in% c(25, 500, 30, 50, 5))
+
+m_sum <- rbind(m_sum, m_sum1)
+
+# pull out row names as vector
+m_sum_names <- m_sum %>% filter(Type == 1) %>% 
+  select(Covariate) %>% as_vector()
+
+# make nice labels
+m_labs <- c("Age (20 vs. 25)",
+              "Registration Day (250 vs. 500)",
+              "Body Mass Index (18.5 vs. 25)",
+              "Total Stigma (20 vs. 30)",
+              "Social Support (40 vs. 50)",
+              "Partner's PHQ-9 (0 vs. 5)",
+              "Inhassunge",
+              "Namacurra",
+              "Mocubela",
+              "Maganja da Costa",
+              "Gilé",
+              "Quelimane",
+              "Single",
+              "Married",
+              "None",
+              "Completed Primary School (Grade 7)",
+              "Some Secondary School (Grades 8-10)",
+              "Completed Secondary School (Grade 10)",
+              "College/Higher Education",
+              "Domestic",
+              "Trader",
+              "Fisher",
+              "Other",
+              "II",
+              "III or IV",
+              "Yes",
+              "Age (30 vs. 25)",
+              "Registration Day (750 vs. 500)",
+              "Body Mass Index (30 vs. 25)",
+              "Total Stigma (40 vs. 30)",
+              "Social Support (60 vs. 50)",
+              "Partner's PHQ-9 (10 vs. 5)")
+
+# now just get ORs
+m_sum_ors <- m_sum %>% filter(Type == 2) %>% # filter to ORs
+  mutate(Covariate = m_sum_names) %>%
+  mutate(Label = m_labs) %>%
+  arrange(Covariate)
+
+# now make nice table and export it
+m_sum_ors %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = FALSE, fixed_thead = TRUE) %>%
+  scroll_box(width = "800px", height = "500px") 
+
+# write out
+#m_sum_ors %>% 
+#  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+#  write_csv("analysis_output/m_mod1.csv")
+
+# print partial effects plots
+qu_m <- Quantile(m_mod)
+med_m <- function(x) qu_m(.5, x)
+ggplot(Predict(m_mod, fun = med_m))
+
+m_age <- ggplot(Predict(m_mod, age, fun = med_m)) +
+  labs(caption = "") + theme_pubclean() +
+  xlab("years") +
+  coord_cartesian(ylim = c(0, 4))
+
+m_bmi <- ggplot(Predict(m_mod, bmi, fun = med_m)) +
+  labs(caption = "") + theme_pubclean() +
+  xlab(expression(kg/m^2)) +
+  coord_cartesian(ylim = c(0, 4))
+
+m_day <- ggplot(Predict(m_mod, day, fun = med_m)) +
+  labs(caption = "") + theme_pubclean() +
+  xlab("day") +
+  coord_cartesian(ylim = c(0, 4))
+
+m_part <- ggplot(Predict(m_mod, partner_phq, fun = med_m)) +
+  labs(caption = "") + theme_pubclean() +
+  xlab("Partner's PHQ-9 Score") +
+  ylab("Median Predicted PHQ-9 Score")
+
+m_stigma <- ggplot(Predict(m_mod, stigma, fun = med_m)) +
+  labs(caption = "") + theme_pubclean() +
+  coord_cartesian(ylim = c(0, 4))
+
+m_ss <- ggplot(Predict(m_mod, socsup, fun = med_m)) +
+  labs(caption = "") + theme_pubclean() +
+  coord_cartesian(ylim = c(0, 4))
+
+# make small plot with inconsequential things
+m_p_small <- ggarrange(m_age, m_bmi, m_day, m_stigma, m_ss, 
+                         labels = c("b. Age", "c. Body Mass Index",
+                                    "d. Enrollment Day", "e. Stigma",
+                                    "f. Social Support"),
+                         ncol = 1,
+                         hjust = 0,
+                         vjust = 0)
+# make one large one
+m_pps <- ggarrange(m_part, m_p_small, 
+          nrow = 1,
+          widths = c(3, 1),
+          labels = c("a. Partners Depressive Sypmtoms", ""),
+          hjust = -0.1,
+          vjust = 0)
+
+annotate_figure(m_pps,
+                top = text_grob("Predictors of Depressive Symptoms in Males \n",
+                                hjust = 0.6,
+                                size = 20,
+                                face = "bold"))
+#ggsave("analysis_output/m_mod_pp.png", units = "in",
+#       width = 8, height = 8)
+```
+
+### Correlation
+
+```{r cor}
+# assess correlation adjusted for both sets of covariates
+joint <- left_join(female, male, by = "record_id", 
+                   suffix = c(".female", ".male"))
+
+# unadjusted spearman correlation
+cor.test(joint$phq9.female, joint$phq9.male, method = "spearman")
+
+# covariate adjusted correlation
+# district and day are the same in females and males
+partial_Spearman(phq9.female | phq9.male ~ district.female + rcs(age.female, 3) + 
+                      rcs(as.numeric(day.female), 3) + 
+                      rel_stat.female + edu_cat.female + job_cat.female + 
+                      rcs(bmi.female, 3) +
+                      rcs(stigma.female, 3) + rcs(socsup.female, 3) +
+                      who_stage.female + art_hx.female + 
+                      rcs(age.male, 3) + 
+                      rel_stat.male + edu_cat.male + job_cat.male + 
+                      rcs(bmi.male, 3) +
+                      rcs(stigma.male, 3) + rcs(socsup.male, 3) +
+                      who_stage.male + art_hx.male, 
+                 data = joint)
+
+```
+
+### IDSA Week
+
+```{r idsa_fig, fig.width=8, fig.height=8, eval=FALSE}
+# to see what I'm going for
+ggarrange(fem_part, m_part,
+          labels = c("Female Partner's Predicted PHQ-9 Score",
+                     "Male Partner's Predicted PHQ-9 Score"),
+          hjust = 0)
+ggsave("Writing/IDSA Abstract/idsa_opt1.png", units = "in",
+       width = 8, height = 4)
+
+# make new dataframes
+idsa_m <- as_tibble(Predict(m_mod, partner_phq, fun = med_m)) %>% 
+  rownames_to_column("id") %>%
+  select(id, partner_phq:upper)
+
+idsa_f <- as_tibble(Predict(fem_mod, partner_phq, fun = med_fem)) %>% 
+  rownames_to_column("id") %>%
+  select(id, partner_phq:upper)
+
+idsa <- left_join(idsa_f, idsa_m, by = "id", suffix = c(".female", ".male"))
+
+# now make plot
+ggplot(idsa) +
+  geom_ribbon(aes(x = partner_phq.female, 
+                  ymin = lower.female, 
+                  ymax = upper.female), 
+              alpha = 0.25, fill = "#264653") +
+  geom_ribbon(aes(x = partner_phq.male, 
+                  ymin = lower.male, 
+                  ymax = upper.male), 
+              alpha = 0.25, fill = "#E76F51") +
+  geom_line(aes(x = partner_phq.female, y = yhat.female), 
+            color = "#264653", size = 0.75) +
+  geom_line(aes(x = partner_phq.male, y = yhat.male), 
+            color = "#E76F51", size = 0.75) +
+  geom_label(aes(x = 15, y = 15),
+            label = "Female", 
+            angle = 45) +
+  geom_label(aes(x = 15, y = 10.5), 
+            label = "Male") +
+  labs(title = "Partner's Depressive Symptoms",
+       caption = "*Controlled for time from first enrollment, age, body mass index, 
+       district, relationship status, education, occupation, 
+       WHO HIV clinical stage, and previous ART use") +
+       xlab("Partner's Patient Health Questionare 9 (PHQ-9) Score") +
+       ylab("Median Predicted PHQ-9 Score*") +
+  theme_pubclean()
+ggsave("Writing/IDSA Abstract/idsa_opt2.png", units = "in",
+       width = 8, height = 8)
+
+# now make plot w/ just female
+ggplot(idsa) +
+  geom_ribbon(aes(x = partner_phq.female, 
+                  ymin = lower.female, 
+                  ymax = upper.female), 
+              alpha = 0.25, fill = "#264653") +
+  geom_line(aes(x = partner_phq.female, y = yhat.female), 
+            color = "#264653", size = 0.75) +
+  labs(title = "Female Partner's Depressive Symptoms",
+       caption = "*Controlled for time from first enrollment, age, body mass index, 
+       district, relationship status, education, occupation, 
+       WHO HIV clinical stage, and previous ART use") +
+       xlab("Male Partner's Patient Health Questionare-9 (PHQ-9) Score") +
+       ylab("Median Predicted Female PHQ-9 Score*") +
+  theme_pubclean()
+ggsave("Writing/IDSA Abstract/idsa_opt3.png", units = "in",
+       width = 8, height = 8)
+
+# now make final figure
+ggplot(idsa) +
+  geom_ribbon(aes(x = partner_phq.female, 
+                  ymin = lower.female, 
+                  ymax = upper.female), 
+              alpha = 0.25, fill = "#264653") +
+  geom_line(aes(x = partner_phq.female, y = yhat.female), 
+            color = "#002060", size = 0.75) +
+  labs(caption = "*Controlled for time from first enrollment, age, body mass index, 
+       district, relationship status, education, occupation, stigma,  
+       social support, WHO HIV clinical stage, and previous ART use") +
+  xlab("Male Partner's Patient Health Questionare-9 (PHQ-9) Score") +
+  ylab("Median Predicted Female PHQ-9 Score*") +
+  #annotate(geom = "text", x = 15, y = 7.5,
+   #        label = expression(atop("Partial Spearman", ~rho == 0.65~"(0.58-0.71)")), 
+    #       parse = TRUE) +
+  theme_pubclean()
+ggsave("Writing/IDSA Abstract/idsa_fin.png", units = "in",
+       width = 8, height = 8)
+
+# other continuous predictors
+fem_age <- ggplot(Predict(fem_mod, age, fun = med_fem)) +
+  labs(caption = "", title = "Age") + theme_pubclean() +
+  xlab("years") +
+  coord_cartesian(ylim = c(0, 4)) +
+  theme(plot.margin = unit(c(0, 5.5, 0, 5.5), "pt"))
+
+fem_bmi <- ggplot(Predict(fem_mod, bmi, fun = med_fem)) +
+  labs(caption = "", title = "Body Mass Index") + theme_pubclean() +
+  xlab(expression(kg/m^2)) +
+  coord_cartesian(ylim = c(0, 4)) +
+  theme(plot.margin = unit(c(0, 5.5, 0, 5.5), "pt"))
+
+fem_stigma <- ggplot(Predict(fem_mod, stigma, fun = med_fem)) +
+  labs(caption = "", title = "Stigma") + theme_pubclean() +
+  xlab("") +
+  coord_cartesian(ylim = c(0, 4)) +
+  theme(plot.margin = unit(c(0, 5.5, 0, 5.5), "pt"))
+
+fem_ss <- ggplot(Predict(fem_mod, socsup, fun = med_fem)) +
+  labs(caption = "", title = "Social Support") + theme_pubclean() + 
+  xlab("") +
+  coord_cartesian(ylim = c(0, 4)) +
+  theme(plot.margin = unit(c(0, 5.5, 0, 5.5), "pt"))
+
+# make small plot with inconsequential things
+ggarrange(fem_age, fem_bmi, fem_stigma, fem_ss,
+                         ncol = 1)
+ggsave("Writing/IDSA Abstract/idsa_side.png", units = "in",
+       width = 4, height = 8)
+```
+
+## Sensitivity Analyses
+
+### Symptom Severity Outcome Coding
+
+```{r symsevsens, results = 'asis', fig.width=8, fig.height=8}
+# model female
+dd <- datadist(female)
+options(datadist = 'dd')
+
+fem_mod_symsevsens <- fit.mult.impute(phq9_cat ~ district + rcs(age, 3) + 
+                             rcs(as.numeric(day), 3) + 
+                             rel_stat + edu_cat + job_cat + 
+                             rcs(bmi, 3) +
+                             who_stage + art_hx +
+                             rcs(stigma, 3) + rcs(socsup, 3) +
+                             rcs(partner_phq, 3),
+                           orm, imp_female, 
+                           data = female %>% filter(!is.na(phq9)), 
+                           pr = FALSE)
+
+# print model output
+print(fem_mod_symsevsens)
+
+# print anova
+print(anova(fem_mod_symsevsens))
+
+# make table of effect estimates
+# summary
+fem_sum_symsevsens <- as.data.frame(summary(fem_mod_symsevsens, age = c(25, 20), 
+                                 day = c(500, 250),
+                                 bmi = c(25, 18.5), 
+                                 stigma = c(30, 20),
+                                 socsup = c(50, 40),
+                                 partner_phq = c(5, 0))) %>% 
+  rownames_to_column(., var = "Covariate")
+
+fem_sum_symsevsens1 <- as.data.frame(summary(fem_mod_symsevsens, age = c(25, 30), 
+                                 day = c(500, 750),
+                                 bmi = c(25, 30), 
+                                 stigma = c(30, 40),
+                                 socsup = c(50, 60),
+                                 partner_phq = c(5, 10))) %>% 
+  rownames_to_column(., var = "Covariate") %>%
+  filter(Low %in% c(25, 500, 30, 50, 5))
+
+fem_sum_symsevsens <- rbind(fem_sum_symsevsens, fem_sum_symsevsens1)
+
+# pull out row names as vector
+fem_sum_names_symsevsens <- fem_sum_symsevsens %>% filter(Type == 1) %>% 
+  select(Covariate) %>% as_vector()
+
+# now just get ORs
+fem_sum_ors_symsevsens <- fem_sum_symsevsens %>% filter(Type == 2) %>% # filter to ORs
+  mutate(Covariate = fem_sum_names_symsevsens) %>%
+  mutate(Label = fem_labs)
+
+# now make nice table and export it
+fem_sum_ors_symsevsens %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = FALSE, fixed_thead = TRUE) %>%
+  scroll_box(width = "800px", height = "500px") 
+
+# write out
+#fem_sum_ors_symsevsens %>% 
+#  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+#  write_csv("analysis_output/fem_mod_symsevsens.csv")
+
+# partial effects plot
+ggplot(Predict(fem_mod_symsevsens))
+
+# model male
+dd <- datadist(male)
+options(datadist = 'dd')
+
+m_mod_symsevsens <- fit.mult.impute(phq9_cat ~ district + rcs(age, 3) + 
+                             rcs(as.numeric(day), 3) + 
+                             rel_stat + edu_cat + job_cat + 
+                             rcs(bmi, 3) +
+                             who_stage + art_hx +
+                             rcs(stigma, 3) + rcs(socsup, 3) +
+                             rcs(partner_phq, 3),
+                           orm, imp_male, 
+                           data = male %>% filter(!is.na(phq9)), 
+                           pr = FALSE)
+
+# print model output
+print(m_mod_symsevsens)
+
+# print anova
+print(anova(m_mod_symsevsens))
+
+# make table of effect estimates
+# summary
+m_sum_symsevsens <- as.data.frame(summary(m_mod_symsevsens, age = c(25, 20), 
+                                 day = c(500, 250),
+                                 bmi = c(25, 18.5), 
+                                 stigma = c(30, 20),
+                                 socsup = c(50, 40),
+                                 partner_phq = c(5, 0))) %>% 
+  rownames_to_column(., var = "Covariate")
+
+m_sum_symsevsens1 <- as.data.frame(summary(m_mod_symsevsens, age = c(25, 30), 
+                                 day = c(500, 750),
+                                 bmi = c(25, 30), 
+                                 stigma = c(30, 40),
+                                 socsup = c(50, 60),
+                                 partner_phq = c(5, 10))) %>% 
+  rownames_to_column(., var = "Covariate") %>%
+  filter(Low %in% c(25, 500, 30, 50, 5))
+
+m_sum_symsevsens <- rbind(m_sum_symsevsens, m_sum_symsevsens1)
+
+# pull out row names as vector
+m_sum_names_symsevsens <- m_sum_symsevsens %>% filter(Type == 1) %>% 
+  select(Covariate) %>% as_vector()
+
+# now just get ORs
+m_sum_ors_symsevsens <- m_sum_symsevsens %>% filter(Type == 2) %>% # filter to ORs
+  mutate(Covariate = m_sum_names_symsevsens) %>%
+  mutate(Label = m_labs)
+
+# now make nice table and export it
+m_sum_ors_symsevsens %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = FALSE, fixed_thead = TRUE) %>%
+  scroll_box(width = "800px", height = "500px") 
+
+# write out
+#m_sum_ors_symsevsens %>% 
+#  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+#  write_csv("analysis_output/m_mod_symsevsens.csv")
+
+# partial effects plot by log odds
+ggplot(Predict(fem_mod_symsevsens))
+```
+
+### Intended Action Outcome Coding
+
+```{r inacsens, results = 'asis', fig.width=8, fig.height=8}
+# model female
+dd <- datadist(female)
+options(datadist = 'dd')
+
+fem_mod_inacsens <- fit.mult.impute(phq9_cat2 ~ district + rcs(age, 3) + 
+                             rcs(as.numeric(day), 3) + 
+                             rel_stat + edu_cat + job_cat + 
+                             rcs(bmi, 3) +
+                             who_stage + art_hx +
+                             rcs(stigma, 3) + rcs(socsup, 3) +
+                             rcs(partner_phq, 3),
+                           orm, imp_female, 
+                           data = female %>% filter(!is.na(phq9)), 
+                           pr = FALSE)
+
+# print model output
+print(fem_mod_inacsens)
+
+# print anova
+print(anova(fem_mod_inacsens))
+
+# make table of effect estimates
+# summary
+fem_sum_inacsens <- as.data.frame(summary(fem_mod_inacsens, age = c(25, 20), 
+                                 day = c(500, 250),
+                                 bmi = c(25, 18.5), 
+                                 stigma = c(30, 20),
+                                 socsup = c(50, 40),
+                                 partner_phq = c(5, 0))) %>% 
+  rownames_to_column(., var = "Covariate")
+
+fem_sum_inacsens1 <- as.data.frame(summary(fem_mod_inacsens, age = c(25, 30), 
+                                 day = c(500, 750),
+                                 bmi = c(25, 30), 
+                                 stigma = c(30, 40),
+                                 socsup = c(50, 60),
+                                 partner_phq = c(5, 10))) %>% 
+  rownames_to_column(., var = "Covariate") %>%
+  filter(Low %in% c(25, 500, 30, 50, 5))
+
+fem_sum_inacsens <- rbind(fem_sum_inacsens, fem_sum_inacsens1)
+
+# pull out row names as vector
+fem_sum_names_inacsens <- fem_sum_inacsens %>% filter(Type == 1) %>% 
+  select(Covariate) %>% as_vector()
+
+# now just get ORs
+fem_sum_ors_inacsens <- fem_sum_inacsens %>% filter(Type == 2) %>% # filter to ORs
+  mutate(Covariate = fem_sum_names_inacsens) %>%
+  mutate(Label = fem_labs)
+
+# now make nice table and export it
+fem_sum_ors_inacsens %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = FALSE, fixed_thead = TRUE) %>%
+  scroll_box(width = "800px", height = "500px") 
+
+# write out
+#fem_sum_ors_inacsens %>% 
+#  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+#  write_csv("analysis_output/fem_mod_inacsens.csv")
+
+# partial effects plot
+ggplot(Predict(fem_mod_inacsens))
+
+# model male
+dd <- datadist(male)
+options(datadist = 'dd')
+
+m_mod_inacsens <- fit.mult.impute(phq9_cat2 ~ district + rcs(age, 3) + 
+                             rcs(as.numeric(day), 3) + 
+                             rel_stat + edu_cat + job_cat + 
+                             rcs(bmi, 3) +
+                             who_stage + art_hx +
+                             rcs(stigma, 3) + rcs(socsup, 3) +
+                             rcs(partner_phq, 3),
+                           orm, imp_male, 
+                           data = male %>% filter(!is.na(phq9)), 
+                           pr = FALSE)
+
+# print model output
+print(m_mod_inacsens)
+
+# print anova
+print(anova(m_mod_inacsens))
+
+# make table of effect estimates
+# summary
+m_sum_inacsens <- as.data.frame(summary(m_mod_inacsens, age = c(25, 20), 
+                                 day = c(500, 250),
+                                 bmi = c(25, 18.5), 
+                                 stigma = c(30, 20),
+                                 socsup = c(50, 40),
+                                 partner_phq = c(5, 0))) %>% 
+  rownames_to_column(., var = "Covariate")
+
+m_sum_inacsens1 <- as.data.frame(summary(m_mod_inacsens, age = c(25, 30), 
+                                 day = c(500, 750),
+                                 bmi = c(25, 30), 
+                                 stigma = c(30, 40),
+                                 socsup = c(50, 60),
+                                 partner_phq = c(5, 10))) %>% 
+  rownames_to_column(., var = "Covariate") %>%
+  filter(Low %in% c(25, 500, 30, 50, 5))
+
+m_sum_inacsens <- rbind(m_sum_inacsens, m_sum_inacsens1)
+
+# pull out row names as vector
+m_sum_names_inacsens <- m_sum_inacsens %>% filter(Type == 1) %>% 
+  select(Covariate) %>% as_vector()
+
+# now just get ORs
+m_sum_ors_inacsens <- m_sum_inacsens %>% filter(Type == 2) %>% # filter to ORs
+  mutate(Covariate = m_sum_names_inacsens) %>%
+  mutate(Label = m_labs)
+
+# now make nice table and export it
+m_sum_ors_inacsens %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = FALSE, fixed_thead = TRUE) %>%
+  scroll_box(width = "800px", height = "500px") 
+
+# write out
+#m_sum_ors_inacsens %>% 
+#  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+#  write_csv("analysis_output/m_mod_inacsens.csv")
+
+# partial effects plot by log odss
+ggplot(Predict(fem_mod_inacsens))
+```
+
+### Dichotomous Outcome Coding
+
+```{r dichsens, results = 'asis', fig.width=8, fig.height=8}
+# model female
+dd <- datadist(female)
+options(datadist = 'dd')
+
+fem_mod_dichsens <- fit.mult.impute(phq9_dich ~ district + rcs(age, 3) + 
+                             rcs(as.numeric(day), 3) + 
+                             rel_stat + edu_cat + job_cat + 
+                             rcs(bmi, 3) +
+                             who_stage + art_hx +
+                             rcs(stigma, 3) + rcs(socsup, 3) +
+                             rcs(partner_phq, 3),
+                           lrm, imp_female, 
+                           data = female %>% filter(!is.na(phq9)), 
+                           pr = FALSE)
+
+# print model output
+print(fem_mod_dichsens)
+
+# print anova
+print(anova(fem_mod_dichsens))
+
+# make table of effect estimates
+# summary
+fem_sum_dichsens <- as.data.frame(summary(fem_mod_dichsens, age = c(25, 20), 
+                                 day = c(500, 250),
+                                 bmi = c(25, 18.5), 
+                                 stigma = c(30, 20),
+                                 socsup = c(50, 40),
+                                 partner_phq = c(5, 0))) %>% 
+  rownames_to_column(., var = "Covariate")
+
+fem_sum_dichsens1 <- as.data.frame(summary(fem_mod_dichsens, age = c(25, 30), 
+                                 day = c(500, 750),
+                                 bmi = c(25, 30), 
+                                 stigma = c(30, 40),
+                                 socsup = c(50, 60),
+                                 partner_phq = c(5, 10))) %>% 
+  rownames_to_column(., var = "Covariate") %>%
+  filter(Low %in% c(25, 500, 30, 50, 5))
+
+fem_sum_dichsens <- rbind(fem_sum_dichsens, fem_sum_dichsens1)
+
+# pull out row names as vector
+fem_sum_names_dichsens <- fem_sum_dichsens %>% filter(Type == 1) %>% 
+  select(Covariate) %>% as_vector()
+
+# now just get ORs
+fem_sum_ors_dichsens <- fem_sum_dichsens %>% filter(Type == 2) %>% # filter to ORs
+  mutate(Covariate = fem_sum_names_dichsens) %>%
+  mutate(Label = fem_labs)
+
+# now make nice table and export it
+fem_sum_ors_dichsens %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = FALSE, fixed_thead = TRUE) %>%
+  scroll_box(width = "800px", height = "500px") 
+
+# write out
+#fem_sum_ors_inacsens %>% 
+#  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+#  write_csv("analysis_output/fem_mod_inacsens.csv")
+
+# partial effects plot
+ggplot(Predict(fem_mod_dichsens, fun = plogis))
+
+# model male
+dd <- datadist(male)
+options(datadist = 'dd')
+
+m_mod_dichsens <- fit.mult.impute(phq9_dich ~ district + rcs(age, 3) + 
+                             rcs(as.numeric(day), 3) + 
+                             rel_stat + edu_cat + job_cat + 
+                             rcs(bmi, 3) +
+                             who_stage + art_hx +
+                             rcs(stigma, 3) + rcs(socsup, 3) +
+                             rcs(partner_phq, 3),
+                           lrm, imp_male, 
+                           data = male %>% filter(!is.na(phq9)), 
+                           pr = FALSE)
+
+# print model output
+print(m_mod_dichsens)
+
+# print anova
+print(anova(m_mod_dichsens))
+
+# make table of effect estimates
+# summary
+m_sum_dichsens <- as.data.frame(summary(m_mod_dichsens, age = c(25, 20), 
+                                 day = c(500, 250),
+                                 bmi = c(25, 18.5), 
+                                 stigma = c(30, 20),
+                                 socsup = c(50, 40),
+                                 partner_phq = c(5, 0))) %>% 
+  rownames_to_column(., var = "Covariate")
+
+m_sum_dichsens1 <- as.data.frame(summary(m_mod_dichsens, age = c(25, 30), 
+                                 day = c(500, 750),
+                                 bmi = c(25, 30), 
+                                 stigma = c(30, 40),
+                                 socsup = c(50, 60),
+                                 partner_phq = c(5, 10))) %>% 
+  rownames_to_column(., var = "Covariate") %>%
+  filter(Low %in% c(25, 500, 30, 50, 5))
+
+m_sum_dichsens <- rbind(m_sum_dichsens, m_sum_dichsens1)
+
+# pull out row names as vector
+m_sum_names_dichsens <- m_sum_dichsens %>% filter(Type == 1) %>% 
+  select(Covariate) %>% as_vector()
+
+# now just get ORs
+m_sum_ors_dichsens <- m_sum_dichsens %>% filter(Type == 2) %>% # filter to ORs
+  mutate(Covariate = m_sum_names_dichsens) %>%
+  mutate(Label = m_labs)
+
+# now make nice table and export it
+m_sum_ors_dichsens %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = FALSE, fixed_thead = TRUE) %>%
+  scroll_box(width = "800px", height = "500px") 
+
+# write out
+#m_sum_ors_dichsens %>% 
+#  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+#  write_csv("analysis_output/m_mod_dichsens.csv")
+
+# partial effects plot by log odss
+ggplot(Predict(fem_mod_dichsens, fun = plogis))
+
+```
+
+### Linear Model with log(PHQ-9)
+
+```{r linsens, results = 'asis', fig.width=8, fig.height=8}
+# model female
+dd <- datadist(female)
+options(datadist = 'dd')
+
+fem_mod_linsens <- fit.mult.impute(log(phq9) ~ district + rcs(age, 3) + 
+                             rcs(as.numeric(day), 3) + 
+                             rel_stat + edu_cat + job_cat + 
+                             rcs(bmi, 3) +
+                             who_stage + art_hx +
+                             rcs(stigma, 3) + rcs(socsup, 3) +
+                             rcs(partner_phq, 3),
+                           ols, imp_female, 
+                           data = female %>% filter(!is.na(phq9)) %>% mutate(phq9 = ifelse(phq9 == 0, 0.1, phq9)), 
+                           pr = FALSE)
+
+# print model output
+print(fem_mod_linsens)
+
+# print anova
+print(anova(fem_mod_linsens))
+
+# make table of effect estimates
+# summary
+fem_sum_linsens <- as.data.frame(summary(fem_mod_linsens, age = c(25, 20), 
+                                 day = c(500, 250),
+                                 bmi = c(25, 18.5), 
+                                 stigma = c(30, 20),
+                                 socsup = c(50, 40),
+                                 partner_phq = c(5, 0))) %>% 
+  rownames_to_column(., var = "Covariate")
+
+fem_sum_linsens1 <- as.data.frame(summary(fem_mod_linsens, age = c(25, 30), 
+                                 day = c(500, 750),
+                                 bmi = c(25, 30), 
+                                 stigma = c(30, 40),
+                                 socsup = c(50, 60),
+                                 partner_phq = c(5, 10))) %>% 
+  rownames_to_column(., var = "Covariate") %>%
+  filter(Low %in% c(25, 500, 30, 50, 5))
+
+fem_sum_linsens <- rbind(fem_sum_linsens, fem_sum_linsens1)
+
+# now make nice table and export it
+fem_sum_linsens %>% 
+  select(Covariate, Diff., Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+  mutate(exp_effect = exp(Effect), exp_lb = exp(`Lower 0.95`), exp_ub = exp(`Upper 0.95`)) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = FALSE, fixed_thead = TRUE) %>%
+  scroll_box(width = "800px", height = "500px") 
+
+# partial effects plot
+ggplot(Predict(fem_mod_linsens, fun = exp))
+
+# model male
+dd <- datadist(male)
+options(datadist = 'dd')
+
+m_mod_linsens <- fit.mult.impute(log(phq9) ~ district + rcs(age, 3) + 
+                             rcs(as.numeric(day), 3) + 
+                             rel_stat + edu_cat + job_cat + 
+                             rcs(bmi, 3) +
+                             who_stage + art_hx +
+                             rcs(stigma, 3) + rcs(socsup, 3) +
+                             rcs(partner_phq, 3),
+                           ols, imp_male, 
+                           data = male %>% filter(!is.na(phq9)) %>% mutate(phq9 = ifelse(phq9 == 0, 0.1, phq9)), 
+                           pr = FALSE)
+
+# print model output
+print(m_mod_linsens)
+
+# print anova
+print(anova(m_mod_linsens))
+
+# make table of effect estimates
+# summary
+m_sum_linsens <- as.data.frame(summary(m_mod_linsens, age = c(25, 20), 
+                                 day = c(500, 250),
+                                 bmi = c(25, 18.5), 
+                                 stigma = c(30, 20),
+                                 socsup = c(50, 40),
+                                 partner_phq = c(5, 0))) %>% 
+  rownames_to_column(., var = "Covariate")
+
+m_sum_linsens1 <- as.data.frame(summary(m_mod_linsens, age = c(25, 30), 
+                                 day = c(500, 750),
+                                 bmi = c(25, 30), 
+                                 stigma = c(30, 40),
+                                 socsup = c(50, 60),
+                                 partner_phq = c(5, 10))) %>% 
+  rownames_to_column(., var = "Covariate") %>%
+  filter(Low %in% c(25, 500, 30, 50, 5))
+
+m_sum_linsens <- rbind(m_sum_linsens, m_sum_linsens1)
+
+# now make nice table and export it
+m_sum_linsens %>% 
+  select(Covariate, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+  mutate(exp_effect = exp(Effect), exp_lb = exp(`Lower 0.95`), exp_ub = exp(`Upper 0.95`)) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = FALSE, fixed_thead = TRUE) %>%
+  scroll_box(width = "800px", height = "500px") 
+
+# partial effects plot
+ggplot(Predict(fem_mod_linsens, fun = exp))
+
+```
+
+### Replace NA with 0
+
+```{r na0sens, results = 'asis', fig.width=8, fig.height=8}
+# first impute 0 to places with NA for both dataframes
+female_na0sens <- female %>%
+  mutate(phq9 = ifelse(is.na(phq9), 0, phq9))
+male_na0sens <- male %>%
+  mutate(phq9 = ifelse(is.na(phq9), 0, phq9))
+
+# now impute
+# female, removed phq-9 because we forced 0s
+imp_female_na0sens <- aregImpute(~ district + age + day + rel_stat +
+                           edu_cat + job_cat + bmi + art_hx +
+                           stigma + socsup +
+                           who_stage + partner_phq, 
+                         data = female_na0sens, 
+                         n.impute = 20, pr = FALSE)
+
+# male, removed phq-9 because we forced 0s
+imp_male_na0sens <- aregImpute(~ district + age + day + rel_stat +
+                           edu_cat + job_cat + bmi + art_hx +
+                           stigma + socsup +
+                           who_stage + partner_phq, 
+                         data = male_na0sens, 
+                       n.impute = 20, pr = FALSE)
+
+# model female
+dd <- datadist(female_na0sens)
+options(datadist = 'dd')
+
+fem_mod_na0sens <- fit.mult.impute(phq9 ~ district + rcs(age, 3) + 
+                             rcs(as.numeric(day), 3) + 
+                             rel_stat + edu_cat + job_cat + 
+                             rcs(bmi, 3) +
+                             who_stage + art_hx +
+                             rcs(stigma, 3) + rcs(socsup, 3) +
+                             rcs(partner_phq, 3),
+                           orm, imp_female_na0sens, 
+                           data = female_na0sens, 
+                           pr = FALSE)
+
+# print model output
+print(fem_mod_na0sens)
+
+# print anova
+print(anova(fem_mod_na0sens))
+
+# make table of effect estimates
+# summary
+fem_sum_na0sens <- as.data.frame(summary(fem_mod_na0sens, age = c(25, 20), 
+                                 day = c(500, 250),
+                                 bmi = c(25, 18.5), 
+                                 stigma = c(30, 20),
+                                 socsup = c(50, 40),
+                                 partner_phq = c(5, 0))) %>% 
+  rownames_to_column(., var = "Covariate")
+
+fem_sum_na0sens1 <- as.data.frame(summary(fem_mod_na0sens, age = c(25, 30), 
+                                 day = c(500, 750),
+                                 bmi = c(25, 30), 
+                                 stigma = c(30, 40),
+                                 socsup = c(50, 60),
+                                 partner_phq = c(5, 10))) %>% 
+  rownames_to_column(., var = "Covariate") %>%
+  filter(Low %in% c(25, 500, 30, 50, 5))
+
+fem_sum_na0sens <- rbind(fem_sum_na0sens, fem_sum_na0sens1)
+
+# pull out row names as vector
+fem_sum_names_na0sens <- fem_sum_na0sens %>% filter(Type == 1) %>% 
+  select(Covariate) %>% as_vector()
+
+# now just get ORs
+fem_sum_ors_na0sens <- fem_sum_na0sens %>% filter(Type == 2) %>% # filter to ORs
+  mutate(Covariate = fem_sum_names_na0sens) %>%
+  mutate(Label = fem_labs)
+
+# now make nice table and export it
+fem_sum_ors_na0sens %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = FALSE, fixed_thead = TRUE) %>%
+  scroll_box(width = "800px", height = "500px") 
+
+# write out
+#fem_sum_ors_na0sens %>% 
+#  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+#  write_csv("analysis_output/fem_mod_na0sens.csv")
+
+# partial effects plot
+qu_f_na <- Quantile(fem_mod_na0sens)
+med_f_na <- function(x) qu_f_na(.5, x)
+ggplot(Predict(fem_mod_na0sens, fun = med_f_na))
+
+# model male
+dd <- datadist(male_na0sens)
+options(datadist = 'dd')
+
+m_mod_na0sens <- fit.mult.impute(phq9 ~ district + rcs(age, 3) + 
+                             rcs(as.numeric(day), 3) + 
+                             rel_stat + edu_cat + job_cat + 
+                             rcs(bmi, 3) +
+                             who_stage + art_hx +
+                             rcs(stigma, 3) + rcs(socsup, 3) +
+                             rcs(partner_phq, 3),
+                           orm, imp_male_na0sens, 
+                           data = male_na0sens, 
+                           pr = FALSE)
+
+# print model output
+print(m_mod_na0sens)
+
+# print anova
+print(anova(m_mod_na0sens))
+
+# make table of effect estimates
+# summary
+m_sum_na0sens <- as.data.frame(summary(m_mod_na0sens, age = c(25, 20), 
+                                 day = c(500, 250),
+                                 bmi = c(25, 18.5), 
+                                 stigma = c(30, 20),
+                                 socsup = c(50, 40),
+                                 partner_phq = c(5, 0))) %>% 
+  rownames_to_column(., var = "Covariate")
+
+m_sum_na0sens1 <- as.data.frame(summary(m_mod_na0sens, age = c(25, 30), 
+                                 day = c(500, 750),
+                                 bmi = c(25, 30), 
+                                 stigma = c(30, 40),
+                                 socsup = c(50, 60),
+                                 partner_phq = c(5, 10))) %>% 
+  rownames_to_column(., var = "Covariate") %>%
+  filter(Low %in% c(25, 500, 30, 50, 5))
+
+m_sum_na0sens <- rbind(m_sum_na0sens, m_sum_na0sens1)
+
+# pull out row names as vector
+m_sum_names_na0sens <- m_sum_na0sens %>% filter(Type == 1) %>% 
+  select(Covariate) %>% as_vector()
+
+# now just get ORs
+m_sum_ors_na0sens <- m_sum_na0sens %>% filter(Type == 2) %>% # filter to ORs
+  mutate(Covariate = m_sum_names_na0sens) %>%
+  mutate(Label = m_labs)
+
+# now make nice table and export it
+m_sum_ors_na0sens %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = FALSE, fixed_thead = TRUE) %>%
+  scroll_box(width = "800px", height = "500px") 
+
+# write out
+#m_sum_ors_na0sens %>% 
+#  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+#  write_csv("analysis_output/m_mod_na0sens.csv")
+
+# partial effects plot
+qu_m_na <- Quantile(m_mod_na0sens)
+med_m_na <- function(x) qu_m_na(.5, x)
+ggplot(Predict(fem_mod_na0sens, fun = med_m_na))
+```
+
+### Post Hoc
+
+```{r phsens, results = 'asis', fig.width=8, fig.height=8}
+# model female
+dd <- datadist(female)
+options(datadist = 'dd')
+
+fem_mod_phsens <- fit.mult.impute(phq9 ~ district + rcs(age, 3) + 
+                             rcs(as.numeric(day), 3) + 
+                             rel_stat + edu_cat + job_cat + 
+                             rcs(bmi, 3) +
+                             who_stage + art_hx +
+                             rcs(stigma, 3) + rcs(socsup, 3),
+                           orm, imp_female, 
+                           data = female %>% filter(!is.na(phq9)), 
+                           pr = FALSE)
+
+# print model output
+print(fem_mod_phsens)
+
+# print anova
+print(anova(fem_mod_phsens))
+
+# make table of effect estimates
+# summary
+fem_sum_phsens <- as.data.frame(summary(fem_mod_phsens, age = c(25, 20), 
+                                 day = c(500, 250),
+                                 bmi = c(25, 18.5), 
+                                 stigma = c(30, 20),
+                                 socsup = c(50, 40))) %>% 
+  rownames_to_column(., var = "Covariate")
+
+fem_sum_phsens1 <- as.data.frame(summary(fem_mod_phsens, age = c(25, 30), 
+                                 day = c(500, 750),
+                                 bmi = c(25, 30), 
+                                 stigma = c(30, 40),
+                                 socsup = c(50, 60))) %>% 
+  rownames_to_column(., var = "Covariate") %>%
+  filter(Low %in% c(25, 500, 30, 50))
+
+fem_sum_phsens <- rbind(fem_sum_phsens, fem_sum_phsens1)
+
+# pull out row names as vector
+fem_sum_names_phsens <- fem_sum_phsens %>% filter(Type == 1) %>% 
+  select(Covariate) %>% as_vector()
+
+# now just get ORs
+fem_sum_ors_phsens <- fem_sum_phsens %>% filter(Type == 2) %>% # filter to ORs
+  mutate(Covariate = fem_sum_names_phsens) %>%
+  mutate(Label = fem_labs[c(1:5, 7:29)])
+
+# now make nice table and export it
+fem_sum_ors_phsens %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = FALSE, fixed_thead = TRUE) %>%
+  scroll_box(width = "800px", height = "500px") 
+
+# partial effects plot
+ggplot(Predict(fem_mod_phsens))
+
+# model male
+dd <- datadist(male)
+options(datadist = 'dd')
+
+m_mod_phsens <- fit.mult.impute(phq9 ~ district + rcs(age, 3) + 
+                             rcs(as.numeric(day), 3) + 
+                             rel_stat + edu_cat + job_cat + 
+                             rcs(bmi, 3) +
+                             who_stage + art_hx +
+                             rcs(stigma, 3) + rcs(socsup, 3),
+                           orm, imp_male, 
+                           data = male %>% filter(!is.na(phq9)), 
+                           pr = FALSE)
+
+# print model output
+print(m_mod_phsens)
+
+# print anova
+print(anova(m_mod_phsens))
+
+# make table of effect estimates
+# summary
+m_sum_phsens <- as.data.frame(summary(m_mod_phsens, age = c(25, 20), 
+                                 day = c(500, 250),
+                                 bmi = c(25, 18.5), 
+                                 stigma = c(30, 20),
+                                 socsup = c(50, 40))) %>% 
+  rownames_to_column(., var = "Covariate")
+
+m_sum_phsens1 <- as.data.frame(summary(m_mod_phsens, age = c(25, 30), 
+                                 day = c(500, 750),
+                                 bmi = c(25, 30), 
+                                 stigma = c(30, 40),
+                                 socsup = c(50, 60))) %>% 
+  rownames_to_column(., var = "Covariate") %>%
+  filter(Low %in% c(25, 500, 30, 50))
+
+m_sum_phsens <- rbind(m_sum_phsens, m_sum_phsens1)
+
+# pull out row names as vector
+m_sum_names_phsens <- m_sum_phsens %>% filter(Type == 1) %>% 
+  select(Covariate) %>% as_vector()
+
+# now just get ORs
+m_sum_ors_phsens <- m_sum_phsens %>% filter(Type == 2) %>% # filter to ORs
+  mutate(Covariate = m_sum_names_phsens) %>%
+  mutate(Label = m_labs[c(1:5, 7:31)])
+
+# now make nice table and export it
+m_sum_ors_phsens %>% 
+  select(Covariate, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), 
+                full_width = FALSE, fixed_thead = TRUE) %>%
+  scroll_box(width = "800px", height = "500px") 
+
+# write out
+#m_sum_ors_dichsens %>% 
+#  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>% 
+#  write_csv("analysis_output/m_mod_dichsens.csv")
+
+# partial effects plot
+ggplot(Predict(fem_mod_phsens))
+
+```
+
+## Sanity Check
+
+```{r sanity_check, fig.width = 16, fig.height = 16}
+# start with cleaned dataset and check phq9, cog_emp, aff_emp, hiv_knowledge
+# make female and male dataset
+sanity_female <- cleaned %>% filter(sex == "Female") %>%
+  select(record_id, clinic, phq9, hivk, cog_emp, aff_emp, stigma_com, stigma_pt, soc_sup_ns, soc_sup_ps)
+sanity_male <- cleaned %>% filter(sex == "Male") %>%
+  select(record_id, clinic, phq9, hivk, cog_emp, aff_emp, stigma_com, stigma_pt, soc_sup_ns, soc_sup_ps)
+
+# now merge them for check
+sanity <- left_join(sanity_female, sanity_male, 
+                    by = "record_id", 
+                    suffix = c(".female", ".male"))
+
+# now plot
+
+sanity_phq <- ggplot(sanity, aes(x = phq9.female, y = phq9.male)) +
+  geom_point(aes(alpha = 1/4)) +
+  geom_smooth(method = "loess") +
+  geom_smooth(method = "lm", color = "red") +
+  ggtitle("PHQ-9") + 
+  theme_pubclean() +
+  theme(legend.position = "none")
+
+sanity_hivk <- ggplot(sanity, aes(x = hivk.female, y = hivk.male)) +
+  geom_point(aes(alpha = 1/4)) +
+  geom_smooth(method = "loess") +
+  geom_smooth(method = "lm", color = "red") +
+  ggtitle("HIV Knowledge") + 
+  theme_pubclean() +
+  theme(legend.position = "none")
+
+sanity_cog_emp <- ggplot(sanity, aes(x = cog_emp.female, y = cog_emp.male)) +
+  geom_point(aes(alpha = 1/4)) +
+  geom_smooth(method = "loess") +
+  geom_smooth(method = "lm", color = "red") +
+  ggtitle("Cognitive Empathy") + 
+  theme_pubclean() +
+  theme(legend.position = "none")
+
+sanity_aff_emp <- ggplot(sanity, aes(x = aff_emp.female, y = aff_emp.male)) +
+  geom_point(aes(alpha = 1/4)) +
+  geom_smooth(method = "loess") +
+  geom_smooth(method = "lm", color = "red") +
+  ggtitle("Affective Empathy") + 
+  theme_pubclean() +
+  theme(legend.position = "none")
+
+sanity_stigma_pt <- ggplot(sanity, aes(x = stigma_pt.female, y = stigma_pt.male)) +
+  geom_point(aes(alpha = 1/4)) +
+  geom_smooth(method = "loess") +
+  geom_smooth(method = "lm", color = "red") +
+  ggtitle("Patient Stigma") + 
+  theme_pubclean() +
+  theme(legend.position = "none")
+
+sanity_stigma_com <- ggplot(sanity, aes(x = stigma_com.female, y = stigma_com.male)) +
+  geom_point(aes(alpha = 1/4)) +
+  geom_smooth(method = "loess") +
+  geom_smooth(method = "lm", color = "red") +
+  ggtitle("Community Stigma") + 
+  theme_pubclean() +
+  theme(legend.position = "none")
+
+sanity_ss_ns <- ggplot(sanity, aes(x = soc_sup_ns.female, y = soc_sup_ns.male)) +
+  geom_point(aes(alpha = 1/4)) +
+  geom_smooth(method = "loess") +
+  geom_smooth(method = "lm", color = "red") +
+  ggtitle("Need for Support") + 
+  theme_pubclean() +
+  theme(legend.position = "none")
+
+sanity_ss_ps <- ggplot(sanity, aes(x = soc_sup_ps.female, y = soc_sup_ps.male)) +
+  geom_point(aes(alpha = 1/4)) +
+  geom_smooth(method = "loess") +
+  geom_smooth(method = "lm", color = "red") +
+  ggtitle("Perceived Support") + 
+  theme_pubclean() +
+  theme(legend.position = "none")
+
+san1 <- ggarrange(sanity_phq, sanity_hivk, sanity_cog_emp, sanity_aff_emp,
+                  sanity_stigma_com, sanity_stigma_pt, sanity_ss_ns, sanity_ss_ps)
+
+# correlate spearman's rho
+cor.test(sanity$phq9.female, sanity$phq9.male, method = "spearman")
+
+## hmm, not quite was I was hoping, now check again from raw dataset...
+# just pull in scales
+sanity_raw <- read_csv("2021_09_14_data.csv") %>%
+  select(record_id, codigo, uni_sani_gile:uni_sani_quel,
+         empatia_1:empatia_28, hiv_1:paciente_9,
+         codigo_homem, empatia_1_h_1:empatia_28_h_1, 
+         hiv_1_h_1:paciente_9_h_1)
+
+# now recode things
+
+# clinics
+# add clinic name column
+sanity_raw$clinic <- NA
+
+# Intervention sites
+
+sanity_raw$clinic[sanity_raw$uni_sani_gile == 1] <- "Muiane CS III"
+sanity_raw$clinic[sanity_raw$uni_sani_nam == 2] <- "Mixixine CS III"
+sanity_raw$clinic[sanity_raw$uni_sani_inha == 3] <- "Palane-Mucula CS II"
+sanity_raw$clinic[sanity_raw$uni_sani_moc == 0] <- "Gurai PSA"
+sanity_raw$clinic[sanity_raw$uni_sani_nam == 3] <- "Muebele PS"
+sanity_raw$clinic[sanity_raw$uni_sani_mag == 0] <- "Maganja da Costa CS III"
+sanity_raw$clinic[sanity_raw$uni_sani_peb == 3] <- "Naburi CS III"
+sanity_raw$clinic[sanity_raw$uni_sani_mag == 1] <- "Nante CS III"
+sanity_raw$clinic[sanity_raw$uni_sani_peb == 6] <- "Tomeia PSA"
+sanity_raw$clinic[sanity_raw$uni_sani_peb == 0] <- "7 de Abril CS III"
+sanity_raw$clinic[sanity_raw$uni_sani_peb == 5] <- "Pele-Pele CS"
+sanity_raw$clinic[sanity_raw$uni_sani_quel == 0] <- "Madal CS"
+
+# Control sites
+
+sanity_raw$clinic[sanity_raw$uni_sani_moc == 1] <- "Mocubela CS III"
+sanity_raw$clinic[sanity_raw$uni_sani_inha == 2] <- "Inhassunge CS I"
+sanity_raw$clinic[sanity_raw$uni_sani_nam == 4] <- "Mugubia CS"
+sanity_raw$clinic[sanity_raw$uni_sani_inha == 0] <- "Bingagira PS"
+sanity_raw$clinic[sanity_raw$uni_sani_inha == 1] <- "Gonhane CS III"
+sanity_raw$clinic[sanity_raw$uni_sani_gile == 0] <- "Gilé CS II"
+sanity_raw$clinic[sanity_raw$uni_sani_moc == 2] <- "Tapata CS III"
+sanity_raw$clinic[sanity_raw$uni_sani_nam == 0] <- "Malei PS"
+sanity_raw$clinic[sanity_raw$uni_sani_peb == 4] <- "Pebane CS II"
+sanity_raw$clinic[sanity_raw$uni_sani_peb == 2] <- "Magiga PSA"
+sanity_raw$clinic[sanity_raw$uni_sani_peb == 1] <- "Alto Maganha CS"
+sanity_raw$clinic[sanity_raw$uni_sani_nam == 1] <- "M'Baua CS III"
+
+# factor, doesn't matter, just needs to be a factor
+sanity_raw$clinic <- factor(sanity_raw$clinic)
+
+
+# remove extra columns
+sanity_raw <- sanity_raw %>% select(-uni_sani_gile:-uni_sani_quel)
+
+# empathy
+# needs to be coded from 0-4
+# 0-4 correctly coded!
+sanity_raw[, 3:30][sanity_raw[, 3:30] == 5] <- NA # female
+sanity_raw[, 68:95][sanity_raw[, 68:95] == 5] <- NA # male
+
+# depression
+sanity_raw[, 58:66][sanity_raw[, 58:66] == 4] <- NA # female
+sanity_raw[, 123:131][sanity_raw[, 123:131] == 4] <- NA # male
+
+# holding off on knowldege b/c it's complicated
+
+# make scores
+sanity_raw <- sanity_raw %>%
+  mutate(cog_emp.female = empatia_5 + empatia_16 + empatia_21 + 
+           empatia_23 + empatia_25 + empatia_26 + empatia_28,
+         cog_emp.male = empatia_5_h_1 + empatia_16_h_1 + empatia_21_h_1 + 
+           empatia_23_h_1 + empatia_25_h_1 + empatia_26_h_1 + empatia_28_h_1,
+         aff_emp.female = empatia_6 + empatia_10 + empatia_13 + 
+           empatia_13 + empatia_17 + empatia_18,
+         aff_emp.male = empatia_6_h_1 + empatia_10_h_1 + empatia_13_h_1 + 
+           empatia_13_h_1 + empatia_17_h_1 + empatia_18_h_1,
+         phq9.female = paciente_1 + paciente_2 + paciente_3 + paciente_4 +
+           paciente_5 + paciente_6 + paciente_7 + paciente_8 + paciente_9,
+         phq9.male = paciente_1_h_1 + paciente_2_h_1 + paciente_3_h_1 + paciente_4_h_1 +
+           paciente_5_h_1 + paciente_6_h_1 + paciente_7_h_1 + paciente_8_h_1 + paciente_9_h_1)
+
+# plot again...
+sanity_phq2 <- ggplot(sanity_raw, aes(x = phq9.female, y = phq9.male)) +
+  geom_point(aes(alpha = 1/4)) +
+  geom_smooth(method = "loess") +
+  geom_smooth(method = "lm", color = "red") +
+  ggtitle("PHQ-9") + 
+  theme_pubclean() +
+  theme(legend.position = "none")
+
+sanity_cog_emp2 <- ggplot(sanity_raw, aes(x = cog_emp.female, y = cog_emp.male)) +
+  geom_point(aes(alpha = 1/4)) +
+  geom_smooth(method = "loess") +
+  geom_smooth(method = "lm", color = "red") +
+  ggtitle("Cognitive Empathy") + 
+  theme_pubclean() +
+  theme(legend.position = "none")
+
+sanity_aff_emp2 <- ggplot(sanity_raw, aes(x = aff_emp.female, y = aff_emp.male)) +
+  geom_point(aes(alpha = 1/4)) +
+  geom_smooth(method = "loess") +
+  geom_smooth(method = "lm", color = "red") +
+  ggtitle("Affective Empathy") + 
+  theme_pubclean() +
+  theme(legend.position = "none")
+
+san2 <- ggarrange(sanity_phq2, sanity_cog_emp2, sanity_aff_emp2)
+
+san_fin <- ggarrange(san1, san2)
+
+annotate_figure(san_fin,
+                top = text_grob("<-Cleanded Data       Raw Data->",
+                                hjust = 0.6,
+                                size = 20,
+                                face = "bold"),
+                bottom = text_grob("red line is linear model fit, blue line is loess smoother",
+                                   size = 10))
+#ggsave("analysis_output/sanity_check.png", units = "in",
+#       width = 8, height = 4)
+
+# correlate spearman's rho
+cor.test(sanity_raw$phq9.female, sanity_raw$phq9.male, method = "spearman")
+
+# now check for overlap in PHQ-9
+san_phq <- sanity_raw %>% select(record_id, clinic, 
+                                 paciente_1:paciente_9,
+                                 paciente_1_h_1:paciente_9_h_1)
+
+# now replace NA with 99 in paciente_1:paciente_9_h_1
+san_phq[, 3:ncol(san_phq)][is.na(san_phq[, 3:ncol(san_phq)])] <- 99
+
+# now check concordance
+san_phq <- san_phq %>%
+  mutate(phq1 = ifelse(paciente_1 == paciente_1_h_1, 1, 0),
+         phq2 = ifelse(paciente_2 == paciente_2_h_1, 1, 0),
+         phq3 = ifelse(paciente_3 == paciente_3_h_1, 1, 0),
+         phq4 = ifelse(paciente_4 == paciente_4_h_1, 1, 0),
+         phq5 = ifelse(paciente_5 == paciente_5_h_1, 1, 0),
+         phq6 = ifelse(paciente_6 == paciente_6_h_1, 1, 0),
+         phq7 = ifelse(paciente_7 == paciente_7_h_1, 1, 0),
+         phq8 = ifelse(paciente_8 == paciente_8_h_1, 1, 0),
+         phq9 = ifelse(paciente_9 == paciente_9_h_1, 1, 0)) %>%
+  rowwise() %>%
+  mutate(conc_phq9 = sum(phq1, phq2, phq3, phq4, phq5, 
+                         phq6, phq7, phq8, phq9))
+
+# now make table of concordance
+conc_tab <- san_phq %>% group_by(clinic) %>%
+  summarise(mean = mean(conc_phq9),
+            median = median(conc_phq9),
+            lower = quantile(conc_phq9, 0.25),
+            upper = quantile(conc_phq9, 0.75)) %>%
+  add_row(clinic = "Overall",
+          mean = mean(san_phq$conc_phq9),
+          median = median(san_phq$conc_phq9),
+          lower = quantile(san_phq$conc_phq9, 0.25),
+          upper = quantile(san_phq$conc_phq9, 0.75),
+          .after = 24) %>%
+  mutate(clinic = factor(clinic, levels = c(sort(levels(san_phq$clinic)), "Overall")))
+
+# now plot with dotplot
+ggplot(san_phq, aes(y = clinic, x = conc_phq9)) +
+  stat_eye(fill = "red", alpha = 1/3) +
+  geom_jitter(alpha = 1/2, width = 0.05, height = 0.2) +
+  geom_vline(aes(xintercept = 1.8), linetype = "dashed", color = "grey70") +
+  labs(title = "PHQ-9 Concordance by Clinic", 
+       subtitle = "Random Chance: 1.8") +
+  xlab("Total Concordance (Mean in Red, Median in Blue)") +
+  ylab("") +
+  xlim(0, 10) +
+  theme_pubclean()
+```
+
+# Create Tables and Figures
+
+## Table 1 - Descriptives
+
+```{r tab1}
+table1(~ year_fac + age + district + rel_stat + edu_cat + job_cat + 
+         art_hx + WHO_clinical_stage_at_art_initiation + bmi +
+         stigma_com + stigma_pt + soc_sup_ps + soc_sup_ns +
+         cog_emp + aff_emp + hivk + phq9 + phq9_cat | sex, data = cleaned, 
+       render.continuous = c(.="Median [Q1, Q3]"), overall = FALSE) %>%
+  t1flex() %>%
+  save_as_docx("tab1", path = "./tabs/tab1.docx")
+```
+
+## Table 2 - Model Validation Information
+
+```{r tab2}
+# make table 2
+labst2 <- c("n", "df", "X2", "prob(X2)", 
+            "rho", "corrected rho", 
+            "R2", "corrected R2", 
+            "Slope", "corrected Slope")
+fem_val_col <- c(fem_mod$stats["Obs"], fem_mod$stats["d.f."], round(fem_mod$stats["Model L.R."], 2),
+                 round(fem_mod$stats["P"], 5),
+                 round(fem_val[1, 1], 3), round(fem_val[1, 5], 3),
+                 round(fem_val[2, 1], 3), round(fem_val[2, 5], 3),
+                 round(fem_val[3, 1], 3), round(fem_val[3, 5], 3))
+m_val_col <- c(m_mod$stats["Obs"], m_mod$stats["d.f."], round(m_mod$stats["Model L.R."], 2),
+               round(m_mod$stats["P"], 5),
+               round(m_val[1, 1], 3), round(m_val[1, 5], 3),
+               round(m_val[2, 1], 3), round(m_val[2, 5], 3),
+               round(m_val[3, 1], 3), round(m_val[3, 5], 3))
+
+tab2 <- tibble(Label = labst2, Female = fem_val_col, Male = m_val_col)
+
+tab2 %>% write_csv("./tabs/tab2.csv")
+```
+
+## Figure 1
+
+```{r fig1, fig.width=8, fig.height=7}
+# make figures of primary analysis from fem_sum_ors and m_sum_ors
+
+# name vector of names for forestplots
+fpnames <- c("Age vs. 25", "    20", "    30",
+             "ART History vs. No", "    Yes",
+             "Body Mass Index vs. 25", "    18.5", "    30",
+             "Registration Day vs. 500", "    250", "    750",
+             "District vs. Pebane", "    Gilé", "    Inhassunge", "    Maganja da Costa",
+             "    Mocubela", "    Namacurra", "    Quelimane",
+             "Education vs. Some Primary School (Grades 1-7)", 
+             "    College/Higher Education", "    Completed Primary School (Grade 7)",
+             "    Completed Secondary School (Grade 10)",
+             "    None", "    Some Secondary School (Grades 8-10)",
+             "Occupation vs. Farmer", "    Domestic", "    Fisher", "    Other", "    Trader",
+             "Partners PHQ-9 vs. 5", "    0", "    10",
+             "Relationship Status vs. Living Together", "    Married", "    Single",
+             "Social Support vs. 50", "    40", "    60",
+             "Stigma vs. 30", "    20", "    40",
+             "WHO Clinical Status vs. I", "    II", "    III or IV")
+
+# now give them an order
+fporder <- c("Age vs. 25", "Age (20 vs. 25)", "Age (30 vs. 25)",
+             "Previous ART vs. No", "Yes", 
+             "Body Mass Index vs. 25", "Body Mass Index (18.5 vs. 25)", "Body Mass Index (30 vs. 25)", 
+             "Registration Day vs. 500", "Registration Day (250 vs. 500)", 
+             "Registration Day (750 vs. 500)", 
+             "District vs. Pebane", "Gilé", "Inhassunge", "Maganja da Costa", "Mocubela", 
+             "Namacurra", "Quelimane",
+             "Education vs. Some Primary School (Grades 1-7)", "None",
+             "Completed Primary School (Grade 7)", "Some Secondary School (Grades 8-10)",
+             "Completed Secondary School (Grade 10)", "College/Higher Education",
+             "Occupation vs. Farmer", "Domestic", "Fisher", "Trader", "Other",
+             "Partners PHQ-9 vs. 5", "Partner's PHQ-9 (0 vs. 5)", 
+             "Partner's PHQ-9 (10 vs. 5)", 
+             "Relationship Status vs. Living Together", "Married", "Single", 
+             "Social Support vs. 50", "Social Support (40 vs. 50)", "Social Support (60 vs. 50)", 
+             "Total Stigma vs. 30", "Total Stigma (20 vs. 30)", "Total Stigma (40 vs. 30)", 
+             "WHO Clinical Status vs. I", "II", "III or IV")
+
+# start by adding two blank rows to fem_sum_ors for "Fisher" and "Trader"
+fem_sum_ors <- fem_sum_ors %>%
+  add_row(Label = "Fisher", .before = 20) %>%
+  add_row(Label = "Trader", .before = 22)
+
+# now slim down to only relevant columns
+fem_fig2 <- fem_sum_ors %>%
+  select(Label, Effect:`Upper 0.95`) %>%
+  mutate(Sex = "Female",
+         `OR (95% CI)` = paste0(round(Effect, 2), " (", round(`Lower 0.95`, 2),
+         ", ", round(`Upper 0.95`, 2), ")")) %>%
+  add_row(Label = "Age vs. 25", .before = 1) %>%
+  add_row(Label = "Previous ART vs. No", .before = 4) %>%
+  add_row(Label = "Body Mass Index vs. 25", .before = 6) %>%
+  add_row(Label = "Registration Day vs. 500", .before = 9) %>%
+  add_row(Label = "District vs. Pebane", .before = 12) %>%
+  add_row(Label = "Education vs. Some Primary School (Grades 1-7)", .before = 19) %>%
+  add_row(Label = "Occupation vs. Farmer", .before = 25) %>%
+  add_row(Label = "Partners PHQ-9 vs. 5", .before = 30) %>%
+  add_row(Label = "Relationship Status vs. Living Together", .before = 33) %>%
+  add_row(Label = "Social Support vs. 50", .before = 36) %>%
+  add_row(Label = "Total Stigma vs. 30", .before = 39) %>%
+  add_row(Label = "WHO Clinical Status vs. I", .before = 42) %>%
+  mutate(Predictor = fpnames) %>%
+  arrange(factor(Label, fporder))
+
+# manual correction
+fem_fig2$`OR (95% CI)`[27:28] <- "-"
+
+m_fig2 <- m_sum_ors %>%
+  select(Label, Effect:`Upper 0.95`) %>%
+  mutate(Sex = "Male",
+         `OR (95% CI)` = paste0(round(Effect, 2), " (", round(`Lower 0.95`, 2),
+         ", ", round(`Upper 0.95`, 2), ")")) %>%
+  add_row(Label = "Age vs. 25", .before = 1) %>%
+  add_row(Label = "Previous ART vs. No", .before = 4) %>%
+  add_row(Label = "Body Mass Index vs. 25", .before = 6) %>%
+  add_row(Label = "Registration Day vs. 500", .before = 9) %>%
+  add_row(Label = "District vs. Pebane", .before = 12) %>%
+  add_row(Label = "Education vs. Some Primary School (Grades 1-7)", .before = 19) %>%
+  add_row(Label = "Occupation vs. Farmer", .before = 25) %>%
+  add_row(Label = "Partners PHQ-9 vs. 5", .before = 30) %>%
+  add_row(Label = "Relationship Status vs. Living Together", .before = 33) %>%
+  add_row(Label = "Social Support vs. 50", .before = 36) %>%
+  add_row(Label = "Total Stigma vs. 30", .before = 39) %>%
+  add_row(Label = "WHO Clinical Status vs. I", .before = 42) %>%
+  mutate(Predictor = fpnames) %>%
+  arrange(factor(Label, fporder))
+
+# trying with forestplot package
+tabletext <- cbind(c("Predictor", fem_fig2$Predictor),
+                   c("Female", fem_fig2$`OR (95% CI)`),
+                   c("Male", m_fig2$`OR (95% CI)`))
+
+#pdf("figs/fig1.pdf", height = 7, width = 8)
+forestplot(tabletext,
+           mean = cbind(c(NA, fem_fig2$Effect), c(NA, m_fig2$Effect)),
+           lower = cbind(c(NA, fem_fig2$`Lower 0.95`), c(NA, m_fig2$`Lower 0.95`)),
+           upper = cbind(c(NA, fem_fig2$`Upper 0.95`), c(NA, m_fig2$`Upper 0.95`)),
+           is.summary = c(rep(TRUE, 2), rep(FALSE, 2),
+                          TRUE, FALSE,
+                          TRUE, rep(FALSE, 2),
+                          TRUE, rep(FALSE, 2),
+                          TRUE, rep(FALSE, 6),
+                          TRUE, rep(FALSE, 5),
+                          TRUE, rep(FALSE, 4),
+                          TRUE, rep(FALSE, 2),
+                          TRUE, rep(FALSE, 2),
+                          TRUE, rep(FALSE, 2),
+                          TRUE, rep(FALSE, 2),
+                          TRUE, rep(FALSE, 2)),
+           xlog = TRUE,
+           xlab = "Adjusted Odds Ratio",
+           boxsize = 0.15,
+           col = fpColors(box = c("#f93800", "#64395f"),
+                          line = c("#f93800", "#64395f")),
+           legend_args = fpLegend(pos = list(x = 0.9, y = 0.925)),
+           align = "l",
+           legend = c("Female", "Male"),
+           hrzl_lines = list("2" = gpar(lwd=1, columns=1:4)),
+           txt_gp = fpTxtGp(cex=0.7, 
+                            label=gpar(fontfamily="Arial"), 
+                            ticks=gpar(cex=0.6),
+                            xlab=gpar(cex=0.65)))
+#dev.off()
+# embed the font
+#embed_fonts("figs/fig1.pdf")
+```
+
+
+## Figure 2
+
+```{r fig2, fig.width=8, fig.height=6}
+#quartz(type = "pdf", file = "figs/fig2.pdf", height = 6, width = 8)
+# need to use quartz to save unicode characters
+ggplot(joint, aes(x = phq9.female, y = phq9.male)) +
+  geom_jitter(alpha = 1/3, width = 0.1, height = 0.1) +
+  annotate(geom = "label", x = 12, y = 2, family = "Arial", hjust = 0, size = 4, label.r = unit(0, "lines"),
+           label = "unadjusted \u03C1 = 0.68\nadjusted \u03C1 = 0.65 (95% CI 0.57, 0.72)") +
+  scale_x_continuous(name = "Female partner's PHQ-9 score", breaks = c(0, 5, 10, 15, 20, 25)) +
+  scale_y_continuous(name = "Male partner's PHQ-9 score", breaks = c(0, 5, 10, 15, 20, 25)) +
+  theme_pubr() + theme(text = element_text(family = "Arial"))
+#dev.off()
+# embed the font
+#embed_fonts("figs/fig2.pdf")
+```
+
+## Supplementary Table 1
+
+```{r repfig1wps}
+# repeat figure 1 with p-values
+# now add p-values from anova
+# first make vector with variable names in with labels
+varnames <- c("age", NA, NA,
+              "art_hx", NA,
+              "bmi", NA, NA,
+              "day", NA, NA,
+              "district", NA, NA, NA, NA, NA, NA,
+              "edu_cat", NA, NA, NA, NA, NA,
+              "job_cat", NA, NA, NA, NA,
+              "partner_phq", NA, NA, 
+              "rel_stat", NA, NA,
+              "socsup", NA, NA,
+              "stigma", NA, NA, 
+              "who_stage", NA, NA)
+
+fem_fig2 <- fem_fig2 %>%
+  mutate(variable = varnames,
+         pval = NA)
+
+for(i in 1:nrow(fem_fig2)){
+  if(!is.na(fem_fig2$variable[i])){
+    fem_fig2$pval[i] <- paste0(round(anv_fem[fem_fig2$variable[i], "P"], 5))
+  }
+}
+
+# now repeat with male
+m_fig2 <- m_fig2 %>%
+  mutate(variable = varnames,
+         pval = NA)
+
+for(i in 1:nrow(m_fig2)){
+  if(!is.na(m_fig2$variable[i])){
+    m_fig2$pval[i] <- paste0(round(anv_m[m_fig2$variable[i], "P"], 5))
+  }
+}
+
+# now merge into one table...
+suptab1 <- fem_fig2 %>%
+  select(Predictor, `OR (95% CI)`, pval) %>%
+  left_join((m_fig2 %>% select(Predictor, `OR (95% CI)`, pval)),
+            by = "Predictor", suffix = c(".female", ".male"))
+
+suptab1 %>% write_csv("./tabs/suptab1.csv")
+```
+
+## Supplementary Table 2
+
+```{r femsens}
+# supplemental table 1 is effect estimates across female outcome models and sensitivity analyses
+
+# start with primary analysis
+primfem <- fem_sum_ors %>% filter(!is.na(Effect)) %>%
+  mutate(`Primary Effect Estimate (95% CI)` = paste0(round(Effect, 2), " (", round(`Lower 0.95`, 2), ", ", round(`Upper 0.95`, 2), ")")) %>%
+  select(Label, `Primary Effect Estimate (95% CI)`)
+
+# 5-level ordinal (symptom severity)
+sympsevfem <- fem_sum_ors_symsevsens %>% 
+  mutate(`SymSev Effect Estimate (95% CI)` = paste0(round(Effect, 2), " (", round(`Lower 0.95`, 2), ", ", round(`Upper 0.95`, 2), ")")) %>%
+  select(Label, `SymSev Effect Estimate (95% CI)`)
+
+# 3-level ordinal (intended action)
+inacfem <- fem_sum_ors_inacsens %>% 
+  mutate(`InAc Effect Estimate (95% CI)` = paste0(round(Effect, 2), " (", round(`Lower 0.95`, 2), ", ", round(`Upper 0.95`, 2), ")")) %>%
+  select(Label, `InAc Effect Estimate (95% CI)`)
+
+# dichotomous 
+dichfem <- fem_sum_ors_dichsens %>% 
+  mutate(`Dich Effect Estimate (95% CI)` = paste0(round(Effect, 2), " (", round(`Lower 0.95`, 2), ", ", round(`Upper 0.95`, 2), ")")) %>%
+  select(Label, `Dich Effect Estimate (95% CI)`)
+
+# least squares
+linfem <- fem_sum_linsens %>% 
+  mutate(`Lin Effect Estimate (95% CI)` = paste0(round(Effect, 2), " (", 
+                                                  round(`Lower 0.95`, 2), ", ", round(`Upper 0.95`, 2), ")"),
+         Label = primfem$Label) %>%
+  select(Label, `Lin Effect Estimate (95% CI)`)
+
+# missing PHQ-9
+missfem <- fem_sum_ors_na0sens %>% 
+  mutate(`Miss Effect Estimate (95% CI)` = paste0(round(Effect, 2), " (", round(`Lower 0.95`, 2), ", ", round(`Upper 0.95`, 2), ")")) %>%
+  select(Label, `Miss Effect Estimate (95% CI)`)
+
+# phsens
+phfem <- fem_sum_ors_phsens %>% 
+  mutate(`P-H Effect Estimate (95% CI)` = paste0(round(Effect, 2), " (", round(`Lower 0.95`, 2), ", ", round(`Upper 0.95`, 2), ")")) %>%
+  select(Label, `P-H Effect Estimate (95% CI)`) %>%
+  add_row(Label = "Partner's PHQ-9 (0 vs. 5)", .before = 6) %>%
+  add_row(Label = "Partner's PHQ-9 (10 vs. 5)", .after = 29)
+
+primfem %>%
+  left_join(sympsevfem) %>%
+  left_join(inacfem) %>%
+  left_join(dichfem) %>%
+  left_join(linfem) %>%
+  left_join(missfem) %>%
+  left_join(phfem) %>%
+  write_csv("./tabs/suptab2.csv")
+```
+
+## Supplementary Table 3
+
+```{r msens}
+# supplemental table 1 is effect estimates across female outcome models and sensitivity analyses
+
+# start with primary analysis
+primm <- m_sum_ors %>% filter(!is.na(Effect)) %>%
+  mutate(`Primary Effect Estimate (95% CI)` = paste0(round(Effect, 2), " (", round(`Lower 0.95`, 2), ", ", round(`Upper 0.95`, 2), ")")) %>%
+  select(Label, `Primary Effect Estimate (95% CI)`)
+
+# 5-level ordinal (symptom severity)
+sympsevm <- m_sum_ors_symsevsens %>% 
+  mutate(`SymSev Effect Estimate (95% CI)` = paste0(round(Effect, 2), " (", round(`Lower 0.95`, 2), ", ", round(`Upper 0.95`, 2), ")")) %>%
+  select(Label, `SymSev Effect Estimate (95% CI)`)
+
+# 3-level ordinal (intended action)
+inacm <- m_sum_ors_inacsens %>% 
+  mutate(`InAc Effect Estimate (95% CI)` = paste0(round(Effect, 2), " (", round(`Lower 0.95`, 2), ", ", round(`Upper 0.95`, 2), ")")) %>%
+  select(Label, `InAc Effect Estimate (95% CI)`)
+
+# dichotomous 
+dichm <- m_sum_ors_dichsens %>% 
+  mutate(`Dich Effect Estimate (95% CI)` = paste0(round(Effect, 2), " (", round(`Lower 0.95`, 2), ", ", round(`Upper 0.95`, 2), ")")) %>%
+  select(Label, `Dich Effect Estimate (95% CI)`)
+
+# least squares
+linm <- m_sum_linsens %>% 
+  mutate(`Lin Effect Estimate (95% CI)` = paste0(round(Effect, 2), " (", 
+                                                  round(`Lower 0.95`, 2), ", ", round(`Upper 0.95`, 2), ")"),
+         Label = primm$Label) %>%
+  select(Label, `Lin Effect Estimate (95% CI)`)
+
+# missing PHQ-9
+missm <- m_sum_ors_na0sens %>% 
+  mutate(`Miss Effect Estimate (95% CI)` = paste0(round(Effect, 2), " (", round(`Lower 0.95`, 2), ", ", round(`Upper 0.95`, 2), ")")) %>%
+  select(Label, `Miss Effect Estimate (95% CI)`)
+
+# phsens
+phm <- m_sum_ors_phsens %>% 
+  mutate(`P-H Effect Estimate (95% CI)` = paste0(round(Effect, 2), " (", round(`Lower 0.95`, 2), ", ", round(`Upper 0.95`, 2), ")")) %>%
+  select(Label, `P-H Effect Estimate (95% CI)`) %>%
+  add_row(Label = "Partner's PHQ-9 (0 vs. 5)", .before = 6) %>%
+  add_row(Label = "Partner's PHQ-9 (10 vs. 5)", .after = 31)
+
+primm %>%
+  left_join(sympsevm) %>%
+  left_join(inacm) %>%
+  left_join(dichm) %>%
+  left_join(linm) %>%
+  left_join(missm) %>%
+  left_join(phm) %>%
+  write_csv("./tabs/suptab3.csv")
+```
+
+## Supplementary Table 4
+
+```{r modval}
+# make supplemental table 3
+labss3 <- c("n", "df", "X2", 
+            "rho", "corrected rho", 
+            "R2", "corrected R2", 
+            "Slope", "corrected Slope")
+fem_val_col <- c(fem_mod$stats["Obs"], fem_mod$stats["d.f."], round(fem_mod$stats["Model L.R."], 2),
+                 round(fem_val[1, 1], 3), round(fem_val[1, 5], 3),
+                 round(fem_val[2, 1], 3), round(fem_val[2, 5], 3),
+                 round(fem_val[3, 1], 3), round(fem_val[3, 5], 3))
+m_val_col <- c(m_mod$stats["Obs"], m_mod$stats["d.f."], round(m_mod$stats["Model L.R."], 2),
+                 round(m_val[1, 1], 3), round(m_val[1, 5], 3),
+                 round(m_val[2, 1], 3), round(m_val[2, 5], 3),
+                 round(m_val[3, 1], 3), round(m_val[3, 5], 3))
+
+suptab4 <- tibble(Label = labss3, Female = fem_val_col, Male = m_val_col)
+
+suptab4 %>% write_csv("./tabs/suptab4.csv")
+```
+
+## Supplementary Figure 1
+
+```{r supfig1, fig.width=10, fig.height=10}
+# additional continous covariates include PHQ-9 scores, age, day, bmi, stigma, and social support
+
+# time to make partial effect plot of predicted PHQ-9 score (like IDSA one with both partners)
+# make new dataframes
+f_phq <- as_tibble(Predict(fem_mod, partner_phq, fun = med_fem)) %>% 
+  rownames_to_column("id") %>%
+  select(id, partner_phq:upper)
+
+m_phq <- as_tibble(Predict(m_mod, partner_phq, fun = med_m)) %>% 
+  rownames_to_column("id") %>%
+  select(id, partner_phq:upper)
+
+fig2 <- left_join(f_phq, m_phq, by = "id", suffix = c(".female", ".male"))
+
+# now make plot
+fig_phq <- ggplot(fig2) +
+  geom_ribbon(aes(x = partner_phq.female, 
+                  ymin = lower.female, 
+                  ymax = upper.female), 
+              alpha = 0.25, fill = "#f93800") +
+  geom_ribbon(aes(x = partner_phq.male, 
+                  ymin = lower.male, 
+                  ymax = upper.male), 
+              alpha = 0.25, fill = "#64395f") +
+  geom_line(aes(x = partner_phq.female, y = yhat.female), 
+            color = "#f93800", size = 0.75) +
+  geom_line(aes(x = partner_phq.male, y = yhat.male), 
+            color = "#64395f", size = 0.75) +
+  geom_label(aes(x = 15, y = 15),
+            label = "Female", 
+            angle = 45) +
+  geom_label(aes(x = 15, y = 10.5), 
+            label = "Male") +
+       xlab("Partner's PHQ-9 Score") +
+       ylab("Median Predicted PHQ-9 Score") +
+  ggtitle("") +
+  theme_pubclean() + theme(text = element_text(family = "Arial"))
+
+# make new dataframes for each
+
+# age
+f_age <- as_tibble(Predict(fem_mod, age, fun = med_fem)) %>% 
+  rownames_to_column("id") %>%
+  select(id, age:upper)
+
+m_age <- as_tibble(Predict(m_mod, age, fun = med_m)) %>% 
+  rownames_to_column("id") %>%
+  select(id, age:upper)
+
+fig_age_df <- left_join(f_age, m_age, by = "id", suffix = c(".female", ".male"))
+
+# age figure
+fig_age <- ggplot(fig_age_df) +
+  geom_ribbon(aes(x = age.female, 
+                  ymin = lower.female, 
+                  ymax = upper.female), 
+              alpha = 0.25, fill = "#f93800") +
+  geom_ribbon(aes(x = age.male, 
+                  ymin = lower.male, 
+                  ymax = upper.male), 
+              alpha = 0.25, fill = "#64395f") +
+  geom_line(aes(x = age.female, y = yhat.female), 
+            color = "#f93800", size = 0.75) +
+  geom_line(aes(x = age.male, y = yhat.male), 
+            color = "#64395f", size = 0.75) +
+  geom_label(aes(x = 35, y = 0.5),
+            label = "Female") +
+  geom_label(aes(x = 45, y = 2.5), 
+            label = "Male") +
+       xlab("Age") +
+       ylab("Median Predicted PHQ-9 Score") +
+  coord_cartesian(ylim = c(0, 5)) +
+  theme_pubclean() + theme(text = element_text(family = "Arial"))
+
+# day
+f_day <- as_tibble(Predict(fem_mod, day, fun = med_fem)) %>% 
+  rownames_to_column("id") %>%
+  select(id, day:upper)
+
+m_day <- as_tibble(Predict(m_mod, day, fun = med_m)) %>% 
+  rownames_to_column("id") %>%
+  select(id, day:upper)
+
+fig_day_df <- left_join(f_day, m_day, by = "id", suffix = c(".female", ".male"))
+
+# day figure
+fig_day <- ggplot(fig_day_df) +
+  geom_ribbon(aes(x = day.female, 
+                  ymin = lower.female, 
+                  ymax = upper.female), 
+              alpha = 0.25, fill = "#f93800") +
+  geom_ribbon(aes(x = day.male, 
+                  ymin = lower.male, 
+                  ymax = upper.male), 
+              alpha = 0.25, fill = "#64395f") +
+  geom_line(aes(x = day.female, y = yhat.female), 
+            color = "#f93800", size = 0.75) +
+  geom_line(aes(x = day.male, y = yhat.male), 
+            color = "#64395f", size = 0.75) +
+  geom_label(aes(x = 900, y = 2.8),
+            label = "Female") +
+  geom_label(aes(x = 900, y = 1), 
+            label = "Male") +
+       xlab("Recruitment Day") +
+       ylab("Median Predicted PHQ-9 Score") +
+  coord_cartesian(ylim = c(0, 5)) +
+  theme_pubclean() + theme(text = element_text(family = "Arial"))
+
+# bmi
+f_bmi <- as_tibble(Predict(fem_mod, bmi, fun = med_fem)) %>% 
+  rownames_to_column("id") %>%
+  select(id, bmi:upper)
+
+m_bmi <- as_tibble(Predict(m_mod, bmi, fun = med_m)) %>% 
+  rownames_to_column("id") %>%
+  select(id, bmi:upper)
+
+fig_bmi_df <- left_join(f_bmi, m_bmi, by = "id", suffix = c(".female", ".male"))
+
+# bmi figure
+fig_bmi <- ggplot(fig_bmi_df) +
+  geom_ribbon(aes(x = bmi.female, 
+                  ymin = lower.female, 
+                  ymax = upper.female), 
+              alpha = 0.25, fill = "#f93800") +
+  geom_ribbon(aes(x = bmi.male, 
+                  ymin = lower.male, 
+                  ymax = upper.male), 
+              alpha = 0.25, fill = "#64395f") +
+  geom_line(aes(x = bmi.female, y = yhat.female), 
+            color = "#f93800", size = 0.75) +
+  geom_line(aes(x = bmi.male, y = yhat.male), 
+            color = "#64395f", size = 0.75) +
+  geom_label(aes(x = 29, y = 3),
+            label = "Female") +
+  geom_label(aes(x = 17, y = 1.5), 
+            label = "Male") +
+       xlab(paste0("Body Mass Index ", expression(kg/m^2))) +
+       ylab("Median Predicted PHQ-9 Score") +
+  coord_cartesian(ylim = c(0, 5)) +
+  theme_pubclean() + theme(text = element_text(family = "Arial"))
+
+# stigma
+f_stigma <- as_tibble(Predict(fem_mod, stigma, fun = med_fem)) %>% 
+  rownames_to_column("id") %>%
+  select(id, stigma:upper)
+
+m_stigma <- as_tibble(Predict(m_mod, stigma, fun = med_m)) %>% 
+  rownames_to_column("id") %>%
+  select(id, stigma:upper)
+
+fig_stigma_df <- left_join(f_stigma, m_stigma, by = "id", suffix = c(".female", ".male"))
+
+# stigma figure
+fig_stigma <- ggplot(fig_stigma_df) +
+  geom_ribbon(aes(x = stigma.female, 
+                  ymin = lower.female, 
+                  ymax = upper.female), 
+              alpha = 0.25, fill = "#f93800") +
+  geom_ribbon(aes(x = stigma.male, 
+                  ymin = lower.male, 
+                  ymax = upper.male), 
+              alpha = 0.25, fill = "#64395f") +
+  geom_line(aes(x = stigma.female, y = yhat.female), 
+            color = "#f93800", size = 0.75) +
+  geom_line(aes(x = stigma.male, y = yhat.male), 
+            color = "#64395f", size = 0.75) +
+  geom_label(aes(x = 35, y = 3.25),
+            label = "Female") +
+  geom_label(aes(x = 45, y = 1.8), 
+            label = "Male") +
+       xlab("Total Stigma") +
+       ylab("Median Predicted PHQ-9 Score") +
+  coord_cartesian(ylim = c(0, 5)) +
+  theme_pubclean() + theme(text = element_text(family = "Arial"))
+
+# socsup
+f_socsup <- as_tibble(Predict(fem_mod, socsup, fun = med_fem)) %>% 
+  rownames_to_column("id") %>%
+  select(id, socsup:upper)
+
+m_socsup <- as_tibble(Predict(m_mod, socsup, fun = med_m)) %>% 
+  rownames_to_column("id") %>%
+  select(id, socsup:upper)
+
+fig_socsup_df <- left_join(f_socsup, m_socsup, by = "id", suffix = c(".female", ".male"))
+
+# socsup figure
+fig_socsup <- ggplot(fig_socsup_df) +
+  geom_ribbon(aes(x = socsup.female, 
+                  ymin = lower.female, 
+                  ymax = upper.female), 
+              alpha = 0.25, fill = "#f93800") +
+  geom_ribbon(aes(x = socsup.male, 
+                  ymin = lower.male, 
+                  ymax = upper.male), 
+              alpha = 0.25, fill = "#64395f") +
+  geom_line(aes(x = socsup.female, y = yhat.female), 
+            color = "#f93800", size = 0.75) +
+  geom_line(aes(x = socsup.male, y = yhat.male), 
+            color = "#64395f", size = 0.75) +
+  geom_label(aes(x = 35, y = 1.5),
+            label = "Female") +
+  geom_label(aes(x = 40, y = 3.75), 
+            label = "Male") +
+       xlab("Total Social Support") +
+       ylab("Median Predicted PHQ-9 Score") +
+  coord_cartesian(ylim = c(0, 5)) +
+  theme_pubclean() + theme(text = element_text(family = "Arial"))
+
+ggarrange(fig_phq, fig_age, fig_day, fig_bmi, fig_stigma, fig_socsup,
+          labels = c("a. Partner's PHQ-9 Score",
+                    "b. Age",
+                    "c. Recruitment Day",
+                    "d. Body Mass Index",
+                    "e. Stigma", 
+                    "f. Social Support"),
+          hjust = -0.1,
+          vjust = 1,
+          font.label = list(family = "Arial"))
+```
+
+## Supplementary Figure 2
+
+```{r supfig2, fig.width=10, fig.height=10, top = 3}
+# check model assumptions for continuous covariates
+par(mfrow=c(3,4))
+# females
+plot.xmean.ordinaly(phq9 ~ age + day + bmi + stigma + socsup + partner_phq, 
+                    data = female, topcats = 3,
+                    subn = FALSE, main = "female",
+                    family = "Arial")
+# males
+plot.xmean.ordinaly(phq9 ~ age + day + bmi + partner_phq + stigma + socsup, 
+                    data = male, topcats = 3,
+                    subn = FALSE, main = "male",
+                    family = "Arial")
+# will add title to document
+#title(main = "Comparing the means of X|Y with (dashed) and without (solid)",
+#      sub = "Testing Proportional Odds Assumption",
+#      line = -1, 
+#      outer = TRUE)
+```
+
+## Supplementary Figure 3
+
+```{r supfig3, fig.width=10, fig.height=10}
+# start with primary analysis
+primfemfig <- fem_sum_ors %>% filter(!is.na(Effect)) %>%
+  mutate(Category = c(rep("vs 25y", 2),
+                      "RxHx",
+                      rep("vs bmi25", 2),
+                      rep("day500", 2),
+                      rep("vs Pebane", 6),
+                      rep("vs Some Prim", 5),
+                      rep("vs Far", 2),
+                      rep("vs phq0", 2),
+                      rep("vs LiTo", 2),
+                      rep("vs soc50", 2),
+                      rep("vs stig30", 2),
+                      rep("vs I", 2))) %>%
+  select(Category, Label, Effect, `Lower 0.95`, `Upper 0.95`)
+
+# 5-level ordinal (symptom severity)
+sympsevfemfig <- fem_sum_ors_symsevsens %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`)
+
+# 3-level ordinal (intended action)
+inacfemfig <- fem_sum_ors_inacsens %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`)
+
+# dichotomous 
+dichfemfig <- fem_sum_ors_dichsens %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`)
+
+# missing PHQ-9
+missfemfig <- fem_sum_ors_na0sens %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`)
+
+# phsens
+phfemfig <- fem_sum_ors_phsens %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>%
+  add_row(Label = "Partner's PHQ-9 (0 vs. 5)", .before = 6) %>%
+  add_row(Label = "Partner's PHQ-9 (10 vs. 5)", .after = 29)
+
+supfig4df <- primfemfig %>%
+  left_join(sympsevfemfig, by = "Label", suffix = c(".prim", ".symsev")) %>%
+  left_join(inacfemfig, by = "Label", suffix = c("", ".inac")) %>%
+  left_join(dichfemfig, by = "Label", suffix = c("", ".dich")) %>%
+  left_join(missfemfig, by = "Label", suffix = c("", ".miss")) %>%
+  left_join(phfemfig, by = "Label", suffix = c("", ".ph")) %>%
+  mutate(Category = factor(Category, levels = c("vs 25y", 
+                                                "RxHx",
+                                                "vs bmi25",
+                                                "day500", 
+                                                "vs Pebane",
+                                                "vs Some Prim",
+                                                "vs Far", 
+                                                "vs phq0", 
+                                                "vs LiTo", 
+                                                "vs soc50", 
+                                                "vs stig30", 
+                                                "vs I")),
+         Label = factor(Label, levels = rev(primfemfig$Label)))
+
+ggplot(supfig4df) +
+  geom_vline(xintercept = 1, color = "grey", linetype = "dashed") +
+  # primary analysis
+  geom_errorbarh(aes(xmin = `Lower 0.95.prim`, xmax = `Upper 0.95.prim`, y = Label, color = "black"),
+                 height = 0.1) +
+  geom_point(aes(x = Effect.prim, y = Label), color = "black") +
+  # symptom severity (5 levels)
+  geom_errorbarh(aes(xmin = `Lower 0.95.symsev`, xmax = `Upper 0.95.symsev`, y = Label, color = "blue"),
+                 height = 0.1) +
+  geom_point(aes(x = Effect.symsev, y = Label), color = "blue") +
+  # intended action (3 levels)
+  geom_errorbarh(aes(xmin = `Lower 0.95`, xmax = `Upper 0.95`, y = Label, color = "green"),
+                 height = 0.1) +
+  geom_point(aes(x = Effect, y = Label), color = "green") +
+  # dichotomous
+  geom_errorbarh(aes(xmin = `Lower 0.95.dich`, xmax = `Upper 0.95.dich`, y = Label, color = "purple"),
+                 height = 0.1) +
+  geom_point(aes(x = Effect.dich, y = Label), color = "purple") +
+  # replaced missing values
+  geom_errorbarh(aes(xmin = `Lower 0.95.miss`, xmax = `Upper 0.95.miss`, y = Label, color = "red"),
+                 height = 0.1) +
+  geom_point(aes(x = Effect.miss, y = Label), color = "red") +
+  # post-hoc
+  geom_errorbarh(aes(xmin = `Lower 0.95.ph`, xmax = `Upper 0.95.ph`, y = Label, color = "violet"),
+                 height = 0.1) +
+  geom_point(aes(x = Effect.ph, y = Label), color = "violet") +
+  facet_grid(Category ~ ., scales = "free", space = "free") +
+  ylab("") + xlab("Adjusted Odds Ratio") +
+  ggtitle("") +
+  theme_pubr() +
+  theme(text = element_text(family = "Arial")) +
+  scale_x_log10() +
+  scale_color_identity(guide = "legend",
+                       name = "Model",
+                       labels = c("Primary (27 levels)",
+                                  "Symptom Severity (5 levels)",
+                                  "Intended Action (3 levels)",
+                                  "Dichotomous",
+                                  "Missing outcomes replaced with 0 (27 levels)",
+                                  "Post-hoc without partner PHQ-9 (27 levels)")) +
+  guides(color = guide_legend(nrow = 3)) +
+  theme(legend.position = "bottom")
+```
+
+## Supplementary Figure 4
+
+```{r supfig4, fig.width=10, fig.height=10}
+# start with primary analysis
+primmfig <- m_sum_ors %>% filter(!is.na(Effect)) %>%
+  mutate(Category = c(rep("vs 25y", 2),
+                      "RxHx",
+                      rep("vs bmi25", 2),
+                      rep("day500", 2),
+                      rep("vs Pebane", 6),
+                      rep("vs Some Prim", 5),
+                      rep("vs Far", 4),
+                      rep("vs phq0", 2),
+                      rep("vs LiTo", 2),
+                      rep("vs soc50", 2),
+                      rep("vs stig30", 2),
+                      rep("vs I", 2))) %>%
+  select(Category, Label, Effect, `Lower 0.95`, `Upper 0.95`)
+
+# 5-level ordinal (symptom severity)
+sympsevmfig <- m_sum_ors_symsevsens %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`)
+
+# 3-level ordinal (intended action)
+inacmfig <- m_sum_ors_inacsens %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`)
+
+# dichotomous 
+dichmfig <- m_sum_ors_dichsens %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`)
+
+# missing PHQ-9
+missmfig <- m_sum_ors_na0sens %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`)
+
+# phsens
+phmfig <- m_sum_ors_phsens %>% 
+  select(Label, Effect, `Lower 0.95`, `Upper 0.95`) %>%
+  add_row(Label = "Partner's PHQ-9 (0 vs. 5)", .before = 6) %>%
+  add_row(Label = "Partner's PHQ-9 (10 vs. 5)", .after = 31)
+
+supfig5df <- primmfig %>%
+  left_join(sympsevmfig, by = "Label", suffix = c(".prim", ".symsev")) %>%
+  left_join(inacmfig, by = "Label", suffix = c("", ".inac")) %>%
+  left_join(dichmfig, by = "Label", suffix = c("", ".dich")) %>%
+  left_join(missmfig, by = "Label", suffix = c("", ".miss")) %>%
+  left_join(phfemfig, by = "Label", suffix = c("", ".ph")) %>%
+  mutate(Category = factor(Category, levels = c("vs 25y", 
+                                                "RxHx",
+                                                "vs bmi25",
+                                                "day500", 
+                                                "vs Pebane",
+                                                "vs Some Prim",
+                                                "vs Far", 
+                                                "vs phq0", 
+                                                "vs LiTo", 
+                                                "vs soc50", 
+                                                "vs stig30", 
+                                                "vs I")),
+         Label = factor(Label, levels = rev(primmfig$Label)))
+
+ggplot(supfig5df) +
+  geom_vline(xintercept = 1, color = "grey", linetype = "dashed") +
+  # primary analysis
+  geom_errorbarh(aes(xmin = `Lower 0.95.prim`, xmax = `Upper 0.95.prim`, y = Label, color = "black"),
+                 height = 0.1) +
+  geom_point(aes(x = Effect.prim, y = Label), color = "black") +
+  # symptom severity (5 levels)
+  geom_errorbarh(aes(xmin = `Lower 0.95.symsev`, xmax = `Upper 0.95.symsev`, y = Label, color = "blue"),
+                 height = 0.1) +
+  geom_point(aes(x = Effect.symsev, y = Label), color = "blue") +
+  # intended action (3 levels)
+  geom_errorbarh(aes(xmin = `Lower 0.95`, xmax = `Upper 0.95`, y = Label, color = "green"),
+                 height = 0.1) +
+  geom_point(aes(x = Effect, y = Label), color = "green") +
+  # dichotomous
+  geom_errorbarh(aes(xmin = `Lower 0.95.dich`, xmax = `Upper 0.95.dich`, y = Label, color = "purple"),
+                 height = 0.1) +
+  geom_point(aes(x = Effect.dich, y = Label), color = "purple") +
+  # replaced missing values
+  geom_errorbarh(aes(xmin = `Lower 0.95.miss`, xmax = `Upper 0.95.miss`, y = Label, color = "red"),
+                 height = 0.1) +
+  geom_point(aes(x = Effect.miss, y = Label), color = "red") +
+  # post-hoc
+  geom_errorbarh(aes(xmin = `Lower 0.95.ph`, xmax = `Upper 0.95.ph`, y = Label, color = "violet"),
+                 height = 0.1) +
+  geom_point(aes(x = Effect.ph, y = Label), color = "violet") +
+  facet_grid(Category ~ ., scales = "free", space = "free") +
+  ylab("") + xlab("Adjusted Odds Ratio") +
+  ggtitle("") +
+  theme_pubr() +
+  theme(text = element_text(family = "Arial")) +
+  scale_x_log10() +
+  scale_color_identity(guide = "legend",
+                       name = "Model",
+                       labels = c("Primary (27 levels)",
+                                  "Symptom Severity (5 levels)",
+                                  "Intended Action (3 levels)",
+                                  "Dichotomous",
+                                  "Missing outcomes replaced with 0 (27 levels)",
+                                  "Post-hoc without partner PHQ-9 (27 levels)")) +
+  guides(color = guide_legend(nrow = 3)) +
+  theme(legend.position = "bottom")
+```
+## Supplementary Figure 5
+
+```{r supfig5, fig.width = 10, fig.height = 8}
+supfig2a <- ggplot(fig2) +
+  geom_ribbon(aes(x = partner_phq.female, 
+                  ymin = lower.female, 
+                  ymax = upper.female), 
+              alpha = 0.25, fill = "#f93800") +
+  geom_ribbon(aes(x = partner_phq.male, 
+                  ymin = lower.male, 
+                  ymax = upper.male), 
+              alpha = 0.25, fill = "#64395f") +
+  geom_line(aes(x = partner_phq.female, y = yhat.female), 
+            color = "#f93800", size = 0.75) +
+  geom_line(aes(x = partner_phq.male, y = yhat.male), 
+            color = "#64395f", size = 0.75) +
+  geom_label(aes(x = 15, y = 15),
+            label = "Female", 
+            angle = 45) +
+  geom_label(aes(x = 15, y = 10.5), 
+            label = "Male") +
+  scale_x_continuous(name = "Partner's PHQ-9 Score",
+                     breaks = c(seq(0, 27, 3)),
+                     limits = c(0, 27)) +
+  scale_y_continuous(name = "Median Predicted PHQ-9 Score",
+                     breaks = c(seq(0, 27, 3)),
+                     limits = c(0, 27)) +
+  ggtitle("a. Ordinal Outcome Model (27-levels)") +
+  theme_pubclean() + theme(text = element_text(family = "Arial"),
+                           plot.title = element_text(face = "bold"))
+
+# now make linear version
+# socsup
+subfig2b_f <- as_tibble(Predict(fem_mod_linsens, partner_phq, fun = exp)) %>% 
+  rownames_to_column("id") %>%
+  select(id, partner_phq:upper)
+
+subfig2b_m <- as_tibble(Predict(m_mod, partner_phq, fun = exp)) %>% 
+  rownames_to_column("id") %>%
+  select(id, partner_phq:upper)
+
+subfig2b_df <- left_join(subfig2b_f, subfig2b_m , by = "id", suffix = c(".female", ".male"))
+
+# socsup figure
+supfig2b <- ggplot(subfig2b_df) +
+  geom_ribbon(aes(x = partner_phq.female, 
+                  ymin = lower.female, 
+                  ymax = upper.female), 
+              alpha = 0.25, fill = "#f93800") +
+  geom_ribbon(aes(x = partner_phq.male, 
+                  ymin = lower.male, 
+                  ymax = upper.male), 
+              alpha = 0.25, fill = "#64395f") +
+  geom_line(aes(x = partner_phq.female, y = yhat.female), 
+            color = "#f93800", size = 0.75) +
+  geom_line(aes(x = partner_phq.male, y = yhat.male), 
+            color = "#64395f", size = 0.75) +
+  geom_label(aes(x = 15, y = 10.5),
+            label = "Female", 
+            angle = 45) +
+  geom_label(aes(x = 6.25, y = 10.5), 
+            label = "Male") +
+  scale_x_continuous(name = "Partner's PHQ-9 Score",
+                     breaks = c(seq(0, 27, 3)),
+                     limits = c(0, 27)) +
+  scale_y_continuous(name = "Predicted PHQ-9 Score",
+                     breaks = c(seq(0, 27, 3)),
+                     limits = c(0, 27)) +
+  ggtitle("b. Linear Outcome Model") +
+  theme_pubclean() + theme(text = element_text(family = "Arial"),
+                           plot.title = element_text(face = "bold"))
+
+ggarrange(supfig2a, supfig2b)
+
+# not using for now
+```
+
+```{r}
+sessionInfo()
+```
