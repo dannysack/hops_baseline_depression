@@ -1942,6 +1942,15 @@ table1(~ year_fac + age + district + rel_stat + edu_cat + job_cat +
        render.continuous = c(.="Median [Q1, Q3]"), overall = FALSE) %>%
   t1flex() %>%
   save_as_docx("tab1", path = "./tabs/tab1.docx")
+
+# for only non-missing outcome data
+table1(~ year_fac + age + district + rel_stat + edu_cat + job_cat + 
+         art_hx + WHO_clinical_stage_at_art_initiation + bmi +
+         stigma_com + stigma_pt + soc_sup_ps + soc_sup_ns +
+         cog_emp + aff_emp + hivk + phq9 + phq9_cat | sex, data = cleaned %>% filter(!is.na(phq9)), 
+       render.continuous = c(.="Median [Q1, Q3]"), overall = FALSE) %>%
+  t1flex() %>%
+  save_as_docx("tab1_2", path = "./tabs/tab1_2.docx")
 ```
 
 ## Table 2 - Model Validation Information
