@@ -1,0 +1,1583 @@
+---
+title: "HoPS+ Depression Analysis"
+author: "Danny Sack<br><small>Division of Epidemiology<br>Vanderbilt University School of Medicine</small>"
+date: "<small>`r Sys.Date()`</small>"
+output:
+  rmdformats::readthedown:
+    code_folding: hide
+    lightbox: true
+    code_download: true
+description: "HoPS+ Baseline Data"
+---
+
+```{r setup, include=FALSE}
+# devtools::install_github("YuqiTian35/cpmgee") # download cpmgee package
+library(tidyverse)
+library(rms)
+library(kableExtra)
+library(ggpubr)
+library(PResiduals)
+library(forestplot)
+library(extrafont)
+library(gee)
+library(geesmv)
+library(readxl)
+library(DiagrammeR)
+library(DiagrammeRsvg)
+library(rsvg)
+library(table1)
+library(flextable)
+library(mice)
+library(micemd)
+loadfonts()
+knitrSet(lang='markdown', fig.path='png/', fig.align='center', w=6, h=4, cache=TRUE)
+options(prType='plain')
+set.seed(1111)
+```
+
+# Pull in data
+
+```{r data, eval = FALSE}
+# load 18 month redcap data
+Load(redcap_cleaned_18m)
+
+# add phq-9 categories
+
+# baseline
+redcap_cleaned_18m$phq9_b_cat <- NA
+redcap_cleaned_18m$phq9_b_cat[redcap_cleaned_18m$phq9_b < 5] <- "Minimal"
+redcap_cleaned_18m$phq9_b_cat[redcap_cleaned_18m$phq9_b > 4 & redcap_cleaned_18m$phq9_b < 10] <- "Mild"
+redcap_cleaned_18m$phq9_b_cat[redcap_cleaned_18m$phq9_b > 9 & redcap_cleaned_18m$phq9_b < 15] <- "Moderate"
+redcap_cleaned_18m$phq9_b_cat[redcap_cleaned_18m$phq9_b > 14 & redcap_cleaned_18m$phq9_b < 20] <- "Moderately Severe"
+redcap_cleaned_18m$phq9_b_cat[redcap_cleaned_18m$phq9_b > 19] <- "Severe"
+redcap_cleaned_18m$phq9_b_cat <- factor(redcap_cleaned_18m$phq9_b_cat, levels = c("Minimal", "Mild",
+                                                        "Moderate", "Moderately Severe",
+                                                        "Severe"))
+label(redcap_cleaned_18m$phq9_b_cat) <- "Baseline Categorical PHQ-9"
+
+# 6-month
+redcap_cleaned_18m$phq9_6m_cat <- NA
+redcap_cleaned_18m$phq9_6m_cat[redcap_cleaned_18m$phq9_6m < 5] <- "Minimal"
+redcap_cleaned_18m$phq9_6m_cat[redcap_cleaned_18m$phq9_6m > 4 & redcap_cleaned_18m$phq9_6m < 10] <- "Mild"
+redcap_cleaned_18m$phq9_6m_cat[redcap_cleaned_18m$phq9_6m > 9 & redcap_cleaned_18m$phq9_6m < 15] <- "Moderate"
+redcap_cleaned_18m$phq9_6m_cat[redcap_cleaned_18m$phq9_6m > 14 & redcap_cleaned_18m$phq9_6m < 20] <- "Moderately Severe"
+redcap_cleaned_18m$phq9_6m_cat[redcap_cleaned_18m$phq9_6m > 19] <- "Severe"
+redcap_cleaned_18m$phq9_6m_cat <- factor(redcap_cleaned_18m$phq9_6m_cat, levels = c("Minimal", "Mild",
+                                                        "Moderate", "Moderately Severe",
+                                                        "Severe"))
+label(redcap_cleaned_18m$phq9_6m_cat) <- "6-month Categorical PHQ-9"
+
+# 18-month
+redcap_cleaned_18m$phq9_18m_cat <- NA
+redcap_cleaned_18m$phq9_18m_cat[redcap_cleaned_18m$phq9_18m < 5] <- "Minimal"
+redcap_cleaned_18m$phq9_18m_cat[redcap_cleaned_18m$phq9_18m > 4 & redcap_cleaned_18m$phq9_18m < 10] <- "Mild"
+redcap_cleaned_18m$phq9_18m_cat[redcap_cleaned_18m$phq9_18m > 9 & redcap_cleaned_18m$phq9_18m < 15] <- "Moderate"
+redcap_cleaned_18m$phq9_18m_cat[redcap_cleaned_18m$phq9_18m > 14 & redcap_cleaned_18m$phq9_18m < 20] <- "Moderately Severe"
+redcap_cleaned_18m$phq9_18m_cat[redcap_cleaned_18m$phq9_18m > 19] <- "Severe"
+redcap_cleaned_18m$phq9_18m_cat <- factor(redcap_cleaned_18m$phq9_18m_cat, levels = c("Minimal", "Mild",
+                                                        "Moderate", "Moderately Severe",
+                                                        "Severe"))
+label(redcap_cleaned_18m$phq9_18m_cat) <- "15/18-month Categorical PHQ-9"
+
+# load previous HIV use data and BMI
+# pull in clinical data
+clin_data <- read_excel("baseline_clinical.xlsx") %>%
+  select(Novo_id_Participante, patient_id,
+         art_initiation_date:WHO_clinical_stage_at_art_initiation_date,
+         weight, weight_date, `height...22`, height_date, bmi) %>%
+  mutate(art_initiation_date = as.Date(art_initiation_date),
+         enrollment_date = as.Date(enrollment_date),
+         WHO_clinical_stage_at_enrollment_date = as.Date(WHO_clinical_stage_at_enrollment_date),
+         WHO_clinical_stage_at_art_initiation_date = as.Date(WHO_clinical_stage_at_art_initiation_date),
+         weight_date = as.Date(weight_date),
+         height_date = as.Date(height_date)) %>%
+  rename(pt_id = Novo_id_Participante)
+
+
+# add in ART Hx data
+arthx <- read_csv("2021_04_30_arthx.csv") %>%
+  rename(art_hx = "flag_previous_ART") %>%
+  mutate(art_hx = ifelse(art_hx == TRUE, "Yes", "No")) %>%
+  select(-district)
+
+# join arthx with clinical data
+clin_data1 <- left_join(clin_data, arthx, by = "patient_id") 
+# remove duplicates
+clin_data1 <- clin_data1 %>% distinct(pt_id, .keep_all = TRUE)
+
+# make df of only covariates we care about (BMI, ART Hx, and WHO clinical stage at initiation)
+clin_info <- tibble(pt_id = clin_data1$pt_id,
+                    bmi = clin_data1$bmi,
+                    who = clin_data1$WHO_clinical_stage_at_art_initiation,
+                    arthx = clin_data1$art_hx) %>%
+  mutate(who = ifelse(who == "IV" | who == "III", "III/IV", who),
+         who = factor(who, levels = c("I", "II", "III/IV")))
+label(clin_info$pt_id) <- "Patient ID for OpenMRS Matching"
+
+# now join with df
+df_all <- left_join(redcap_cleaned_18m, clin_info, by = "pt_id")
+
+# figure out if one or both partners withdrew
+table(df_all$study_status)
+df_all %>% filter(study_status == "Formally withdrew") %>% pull(record_id)
+
+# now remove people who formally withdrew and covariates not needed
+final <- df_all %>% filter(record_id %nin% c(3, 42, 159, 570, 625)) %>%
+  select(record_id:job_cat, bmi, who, arthx, baseline_int_date, stigma_com_b, stigma_pt_b, soc_sup_ps_b, soc_sup_ns_b,
+         phq9_b, phq9_b_cat, phq9_6m, phq9_6m_cat, phq9_18m, phq9_18m_cat)
+label(final$bmi) <- "Body Mass Index"
+label(final$who) <- "WHO HIV Clinical Stage"
+label(final$arthx) <- "Previous ART"
+Save(final)
+```
+
+# Descriptive Analysis
+
+## Figure 1: Flowchart
+
+```{r fig1}
+# create study flow chart
+
+# set font
+par(family = "Arial")
+
+flow <- grViz("digraph flowchart {
+      # main nodes
+      node [fontname = Arial, shape = rectangle, penwidth = 1.5, fontsize = 14] 
+      consented [label = 'Couples Consented & Enrolled (n = 1,079)']
+      fenrolled [label = 'Eligible Partners (n = 1,074)']
+      intclin [label = 'Enrolled at intervention clinics (n = 523)']
+      contclin [label = 'Enrolled at standard of care clinics (n = 551)']
+      int6m [label = 'Non-missing 6-month PHQ-9
+      Females (n = 353)
+      Males (n = 289)']
+      int18m [label = 'Non-missing 15–18-month PHQ-9
+      Females (n = 358)
+      Males (n = 275)']
+      cont6m [label = 'Non-missing 6-month PHQ-9
+      Females (n = 400)
+      Males (n = 343)']
+      cont18m [label = 'Non-missing 15–18-month PHQ-9
+      Females (n = 368)
+      Males (n = 317)']
+      
+      # exclusion nodes (smaller fontsize)
+      node [fontname = Arial, shape = rectangle, penwidth = 1.5, fontsize = 12] 
+      excall [label = 'One or both partners withdrew from the study (n = 5, 0.5%)']
+      
+      # dummy nodes
+      node [shape=none, width=0, height=0, label='']
+      n3
+
+      # edge definitions with the node IDs
+      n3 -> fenrolled
+      n3 -> excall
+      fenrolled -> intclin
+      fenrolled -> contclin
+      int6m -> int18m
+      cont6m -> cont18m
+      {rank = same; n3 -> excall}
+      {rank = same; intclin; contclin}
+      {rank = same; finint; finint}
+      {rank = same; int6m, cont6m}
+      {rank = same; int18m, cont18m}
+      
+      edge[dir = none]
+      consented -> n3
+      intclin -> int6m
+      contclin -> cont6m
+      }
+      ")
+
+flow
+# export
+flow %>%
+  export_svg() %>%
+  charToRaw() %>%
+  rsvg_pdf("figs/flow_fig.pdf")
+# # embed fonts
+embedFonts("figs/flow_fig.pdf", fontpaths = "/Library/Fonts/Microsoft/Arial.ttf")
+```
+
+## Table 1: Baseline Demographics
+
+```{r tab1}
+Load(final)
+
+# overall table 1
+table1(~ factor(year) + age + rel_stat + edu_cat + job_cat + bmi + who + arthx +
+         arthx + stigma_com_b + stigma_pt_b + soc_sup_ps_b + soc_sup_ns_b +
+         phq9_b + phq9_b_cat | group + sex,
+       render.continuous = c(.="Median [Q1, Q3]"),
+       data = final, overall = FALSE) %>%
+  t1flex() %>%
+  save_as_docx("tabs/tab1all", path = "tabs/tab1all.docx")
+
+# non-missing 6-month phq_9
+table1(~ factor(year) + age + rel_stat + edu_cat + job_cat + bmi + who + arthx +
+         arthx + stigma_com_b + stigma_pt_b + soc_sup_ps_b + soc_sup_ns_b +
+         phq9_b + phq9_b_cat | group + sex,
+       render.continuous = c(.="Median [Q1, Q3]"),
+       data = final %>% filter(!is.na(phq9_6m)), overall = FALSE) %>%
+  t1flex() %>%
+  save_as_docx("tabs/tab6m", path = "tabs/tab6m.docx")
+
+# non-missing 18-month phq_9
+table1(~ factor(year) + age + rel_stat + edu_cat + job_cat + bmi + who + arthx +
+         arthx + stigma_com_b + stigma_pt_b + soc_sup_ps_b + soc_sup_ns_b +
+         phq9_b + phq9_b_cat | group + sex,
+       render.continuous = c(.="Median [Q1, Q3]"),
+       data = final %>% filter(!is.na(phq9_18m)), overall = FALSE) %>%
+  t1flex() %>%
+  save_as_docx("tabs/tab18m", path = "tabs/tab18m.docx")
+```
+
+## Table 3: Outcome Table
+
+```{r tab2}
+table1(~ phq9_b + phq9_b_cat +
+         phq9_6m + phq9_6m_cat +
+         phq9_18m + phq9_18m_cat | sex + group,
+       render.continuous = c(.="Median [Q1, Q3]"),
+       data = final, overall = FALSE) %>%
+  t1kable() 
+# have to copy and paste row by row because of repeated column names...
+```
+
+## Figure 2: Spearman's Correlations
+
+```{r fig2, fig.width=9, fig.height=3}
+# start by making dataframe that splits male and females
+female <- final %>% filter(sex == "Female") %>%
+  mutate(stigma = stigma_com_b + stigma_pt_b,
+         socsup = soc_sup_ns_b + soc_sup_ps_b)
+male <- final %>% filter(sex == "Male") %>%
+  mutate(stigma = stigma_com_b + stigma_pt_b,
+         socsup = soc_sup_ns_b + soc_sup_ps_b)
+wide <- left_join(female, male, by = "record_id", suffix = c(".female", ".male"))
+
+# calculate correlations
+
+# baseline unadjusted
+cor.test(wide$phq9_b.female, wide$phq9_b.male, method = "spearman") # 0.6879224, 406 couples
+# baseline adjusted (not for ART hx, WHO stage, or BMI for model convergence) # 0.6195572 (0.5516503, 0.6793047)
+partial_Spearman(phq9_b.female | phq9_b.male ~ group.female + district.female +
+                      rcs(age.female, 3) + 
+                      rcs(as.numeric(day.female), 3) + 
+                      rel_stat.female + edu_cat.female + job_cat.female + 
+                      rcs(stigma.female, 3) + rcs(socsup.female, 3) +
+                      rcs(age.male, 3) + 
+                      rel_stat.male + edu_cat.male + job_cat.male + 
+                      rcs(stigma.male, 3) + rcs(socsup.male, 3), 
+                 data = wide)
+
+# 6mo unadjusted
+cor.test(wide$phq9_6m.female, wide$phq9_6m.male, method = "spearman") # 0.6492893, 292 couples
+# 6mo adjusted (not for ART hx, WHO stage, or BMI for model convergence), with baseline PHQ-9 and group # 0.44508 (0.3239037, 0.551889)
+partial_Spearman(phq9_6m.female | phq9_6m.male ~ group.female + district.female +
+                      rcs(age.female, 3) + 
+                      rcs(as.numeric(day.female), 3) + 
+                      rel_stat.female + edu_cat.female + job_cat.female + 
+                      rcs(stigma.female, 3) + rcs(socsup.female, 3) +
+                      rcs(phq9_b.female, 3) + rcs(phq9_b.male, 3) +
+                      rcs(age.male, 3) + 
+                      rel_stat.male + edu_cat.male + job_cat.male + 
+                      rcs(stigma.male, 3) + rcs(socsup.male, 3), 
+                 data = wide)
+
+# 6mo unadjusted
+cor.test(wide$phq9_18m.female, wide$phq9_18m.male, method = "spearman") # 0.6915892, 268 couples
+# 6mo adjusted (not for ART hx, WHO stage, or BMI for model convergence), with baseline PHQ-9 and group # 0.4892152 (0.3641189, 0.5969724)
+partial_Spearman(phq9_18m.female | phq9_18m.male ~ group.female + district.female +
+                      rcs(age.female, 3) + 
+                      rcs(as.numeric(day.female), 3) + 
+                      rel_stat.female + edu_cat.female + job_cat.female + 
+                      rcs(stigma.female, 3) + rcs(socsup.female, 3) +
+                      rcs(phq9_b.female, 3) + rcs(phq9_b.male, 3) +
+                      rcs(age.male, 3) + 
+                      rel_stat.male + edu_cat.male + job_cat.male + 
+                      rcs(stigma.male, 3) + rcs(socsup.male, 3), 
+                 data = wide)
+
+# figure components
+fig2.1 <- ggplot(wide, aes(x = phq9_b.female, y = phq9_b.male)) +
+  annotate(geom = "label", x = 0, y = 22.5, family = "Arial", hjust = 0, size = 3, label.r = unit(0, "lines"),
+           label = "n = 644 couples\nunadjusted \u03C1 = 0.69\nadjusted \u03C1 = 0.62 (95% CI 0.55, 0.68)") +
+  geom_jitter(alpha = 1/4, width = 0.1, height = 0.1) +
+  scale_x_continuous(name = "Female partner's PHQ-9 score", breaks = c(0, 5, 10, 15, 20, 25), lim = c(0, 25)) +
+  scale_y_continuous(name = "Male partner's PHQ-9 score", breaks = c(0, 5, 10, 15, 20, 25), lim = c(0, 25)) +
+  ggtitle("A) Baseline") +
+  theme_pubr() + theme(text = element_text(family = "Arial", size = 10))
+
+fig2.2 <- ggplot(wide, aes(x = phq9_6m.female, y = phq9_6m.male)) +
+  annotate(geom = "label", x = 0, y = 22.5, family = "Arial", hjust = 0, size = 3, label.r = unit(0, "lines"),
+           label = "n = 390 couples\nunadjusted \u03C1 = 0.65\nadjusted \u03C1 = 0.45 (95% CI 0.32, 0.55)") +
+  geom_jitter(alpha = 1/4, width = 0.1, height = 0.1) +
+  scale_x_continuous(name = "Female partner's PHQ-9 score", breaks = c(0, 5, 10, 15, 20, 25), lim = c(0, 25)) +
+  scale_y_continuous(name = "Male partner's PHQ-9 score", breaks = c(0, 5, 10, 15, 20, 25), lim = c(0, 25)) +
+  ggtitle("B) 6-month") +
+  theme_pubr() + theme(text = element_text(family = "Arial", size = 10))
+
+fig2.3 <- ggplot(wide, aes(x = phq9_18m.female, y = phq9_18m.male)) +
+  annotate(geom = "label", x = 0, y = 22.5, family = "Arial", hjust = 0, size = 3, label.r = unit(0, "lines"),
+           label = "n = 373 couples\nunadjusted \u03C1 = 0.69\nadjusted \u03C1 = 0.49 (95% CI 0.36, 0.60)") +
+  geom_jitter(alpha = 1/4, width = 0.1, height = 0.1) +
+  scale_x_continuous(name = "Female partner's PHQ-9 score", breaks = c(0, 5, 10, 15, 20, 25), lim = c(0, 25)) +
+  scale_y_continuous(name = "Male partner's PHQ-9 score", breaks = c(0, 5, 10, 15, 20, 25), lim = c(0, 25)) +
+  ggtitle("C) 15–18-month") +
+  theme_pubr() + theme(text = element_text(family = "Arial", size = 10))
+
+#quartz(type = "pdf", file = "figs/fig2.pdf", height = 3, width = 9)
+ggarrange(fig2.1, fig2.2, fig2.3, nrow = 1)
+#dev.off()
+#embed_fonts("figs/fig2.pdf")
+```
+
+# Causal Analysis
+
+## Imputations
+
+```{r imps, eval = FALSE, fig.width=10, fig.height=10}
+# subset to covariates for female and male models
+fem_fin <- wide %>% mutate(cov.female = ifelse(reg_date.female < "2018-07-26", 1, 0)) %>%
+  select(age.female, day.female, group.female:arthx.female,
+                           stigma.female, socsup.female, phq9_b.male,
+                           phq9_b.female, phq9_b_cat.female,
+                           phq9_6m.female, phq9_6m_cat.female,
+                           phq9_18m.female, phq9_18m_cat.female,
+                           cov.female) %>%
+  mutate(clinic.female = as.integer(clinic.female),
+         dich6 = ifelse(phq9_6m.female < 10, 0, 1),
+         dich18 = ifelse(phq9_18m.female < 10, 0, 1),
+         miss6 = ifelse(is.na(phq9_6m_cat.female), 0, phq9_6m_cat.female),
+         miss18 = ifelse(is.na(phq9_18m_cat.female), 0, phq9_18m_cat.female))
+m_fin <- wide %>% mutate(cov.male = ifelse(reg_date.male < "2018-07-26", 1, 0)) %>%
+   select(age.male, day.male, group.male:arthx.male,
+                           stigma.male, socsup.male, phq9_b.female,
+                           phq9_b.male, phq9_b_cat.male,
+                           phq9_6m.male, phq9_6m_cat.male,
+                           phq9_18m.male, phq9_18m_cat.male,
+                           cov.male) %>%
+  mutate(clinic.male = as.integer(clinic.male),
+         dich6 = ifelse(phq9_6m.male < 10, 0, 1),
+         dich18 = ifelse(phq9_18m.male < 10, 0, 1),
+         miss6 = ifelse(is.na(phq9_6m_cat.male), 0, phq9_6m_cat.male),
+         miss18 = ifelse(is.na(phq9_18m_cat.male), 0, phq9_18m_cat.male))
+
+# create predictor matricies
+predmat_f <- make.predictorMatrix(fem_fin)
+predmat_m <- make.predictorMatrix(m_fin)
+
+# now edit predictor matrix, from "mice" documentation
+# "Each row corresponds to a variable block, i.e., a set of variables to be imputed. 
+# A value of 1 means that the column variable is used as a predictor for the target block (in the rows)."
+# my understanding is that the column then denotes whether that variable will be used to predict the row variable
+
+# first make clinic the cluster variable for all predictions (except it's own)
+# only need to do it in the column because it is not missing in the rows
+predmat_f[, "clinic.female"] <- -2
+predmat_f["clinic.female", "clinic.female"] <- 0
+predmat_m[, "clinic.male"] <- -2
+predmat_m["clinic.male", "clinic.male"] <- 0
+
+# first remove covid-sens from the analysis (since we don't want it to predict anything)
+# we also don't want categorical versions of PHQ-9 to predict anything
+predmat_f[c("phq9_b_cat.female", "phq9_6m_cat.female", "phq9_18m_cat.female", "cov.female", "miss6", "miss18", "dich6", "dich18"),] <- 0
+predmat_f[,c("phq9_b_cat.female", "phq9_6m_cat.female", "phq9_18m_cat.female", "cov.female", "miss6", "miss18", "dich6", "dich18")] <- 0
+predmat_m[c("phq9_b_cat.male", "phq9_6m_cat.male", "phq9_18m_cat.male", "cov.male", "miss6", "miss18", "dich6", "dich18"),] <- 0
+predmat_m[,c("phq9_b_cat.male", "phq9_6m_cat.male", "phq9_18m_cat.male", "cov.male", "miss6", "miss18", "dich6", "dich18")] <- 0
+
+# now subest into intervention and control for separate imputations
+fem_int <- fem_fin %>% filter(group.female == "Intervention")
+fem_con <- fem_fin %>% filter(group.female == "Control")
+m_int <- m_fin %>% filter(group.male == "Intervention")
+m_con <- m_fin %>% filter(group.male == "Control")
+
+# vector of things to exclude from imputations
+exc_f <- c("phq9_b_cat.female", "phq9_6m_cat.female", "phq9_18m_cat.female", "cov.female", "miss6", "miss18", "dich6", "dich18")
+exc_m <- c("phq9_b_cat.male", "phq9_6m_cat.male", "phq9_18m_cat.male", "cov.male", "miss6", "miss18", "dich6", "dich18")
+
+# finally create a matrix of variables not to impute (by setting is.na to FALSE)
+wheremat_int_f <- is.na(fem_int)
+wheremat_int_f[, exc_f] <- FALSE
+wheremat_con_f <- is.na(fem_con)
+wheremat_con_f[, exc_f] <- FALSE
+wheremat_int_m <- is.na(m_int)
+wheremat_int_m[, exc_m] <- FALSE
+wheremat_con_m <- is.na(m_con)
+wheremat_con_m[, exc_m] <- FALSE
+
+# will do 50 imputations
+
+# do imputations (female)
+int_imp_fem <- mice(fem_int , m = 50,
+                predictorMatrix = predmat_f,
+                defaultMethod = c("pmm", "2l.bin", "polyreg", "polr"),
+                where = wheremat_int_f,
+                seed = 1111)
+con_imp_fem <- mice(fem_con, m = 50,
+                predictorMatrix = predmat_f,
+                defaultMethod = c("pmm", "2l.bin", "polyreg", "polr"),
+                where = wheremat_con_f,
+                seed = 1111)
+
+# now combine imputation objects for analysis
+imp_fem <- rbind(int_imp_fem, con_imp_fem)
+
+# do imputations (female)
+int_imp_m <- mice(m_int , m = 50,
+                predictorMatrix = predmat_m,
+                defaultMethod = c("pmm", "2l.bin", "polyreg", "polr"),
+                where = wheremat_int_m,
+                seed = 1111)
+con_imp_m <- mice(m_con, m = 50,
+                predictorMatrix = predmat_m,
+                defaultMethod = c("pmm", "2l.bin", "polyreg", "polr"),
+                where = wheremat_con_m,
+                seed = 1111)
+
+# now combine imputation objects for analysis
+imp_m <- rbind(int_imp_m, con_imp_m)
+
+# now save for future analyses
+Save(imp_fem)
+Save(imp_m)
+
+# do some diagnostics
+
+# stripplots to check distributions of imputed data
+stripplot(imp_fem)
+stripplot(imp_m)
+
+# bwplots to re-check distributions of imputed data
+bwplot(imp_fem)
+bwplot(imp_m)
+
+# pull out one imputed dataset for simulations
+# sim_base <- complete(imp_fem, 1) %>% select(clinic.female, group.female, phq9_b.female, phq9_18m.female)
+# Save(sim_base)
+```
+
+## Primary Analysis
+
+```{r analysis_setup}
+# load imputations
+Load(imp_fem)
+Load(imp_m)
+
+# female
+f_ua_form6 <- formula(phq9_6m.female ~ group.female + rcs(phq9_b.female, 3))
+f_ua_form18 <- formula(phq9_18m.female ~ group.female + rcs(phq9_b.female, 3))
+f_a_form6 <- formula(phq9_6m.female ~ group.female + rcs(day.female, 3) + rcs(age.female, 3) + who.female +
+           + edu_cat.female + rcs(socsup.female, 3) + rcs(stigma.female, 3) + rcs(phq9_b.male, 3))
+f_a_form18 <- formula(phq9_18m.female ~ group.female + rcs(day.female, 3) + rcs(age.female, 3) + who.female +
+           + edu_cat.female + rcs(socsup.female, 3) + rcs(stigma.female, 3) + rcs(phq9_b.male, 3))
+f_dich_form6 <- formula(dich6 ~ group.female + rcs(phq9_b.female, 3))
+f_dich_form18 <- formula(dich18 ~ group.female + rcs(phq9_b.female, 3))
+f_miss_form6 <- formula(miss6 ~ group.female + rcs(day.female, 3) + rcs(age.female, 3) + who.female +
+           + edu_cat.female + rcs(socsup.female, 3) + rcs(stigma.female, 3) + rcs(phq9_b.male, 3))
+f_miss_form18 <- formula(miss18 ~ group.female + rcs(day.female, 3) + rcs(age.female, 3) + who.female +
+           + edu_cat.female + rcs(socsup.female, 3) + rcs(stigma.female, 3) + rcs(phq9_b.male, 3))
+
+# male
+m_ua_form6 <- formula(phq9_6m.male ~ group.male + rcs(phq9_b.male, 3))
+m_ua_form18 <- formula(phq9_18m.male ~ group.male + rcs(phq9_b.male, 3))
+m_a_form6 <- formula(phq9_6m.male ~ group.male + rcs(day.male, 3) + rcs(age.male, 3) + who.male +
+           + edu_cat.male + rcs(socsup.male, 3) + rcs(stigma.male, 3) + rcs(phq9_b.female, 3))
+m_a_form18 <- formula(phq9_18m.male ~ group.male + rcs(day.male, 3) + rcs(age.male, 3) + who.male +
+           + edu_cat.male + rcs(socsup.male, 3) + rcs(stigma.male, 3) + rcs(phq9_b.female, 3))
+m_dich_form6 <- formula(dich6 ~ group.male + rcs(phq9_b.male, 3))
+m_dich_form18 <- formula(dich18 ~ group.male + rcs(phq9_b.male, 3))
+m_miss_form6 <- formula(miss6 ~ group.male + rcs(day.male, 3) + rcs(age.male, 3) + who.male +
+           + edu_cat.male + rcs(socsup.male, 3) + rcs(stigma.male, 3) + rcs(phq9_b.female, 3))
+m_miss_form18 <- formula(miss18 ~ group.male + rcs(day.male, 3) + rcs(age.male, 3) + who.male +
+           + edu_cat.male + rcs(socsup.male, 3) + rcs(stigma.male, 3) + rcs(phq9_b.female, 3))
+
+# pool orm models across imputations
+
+# first need to create tidy dataframe with 6 colums: term, estimate, std.error, statistic, p.value, and nobs (degrees of freedom) from MMLogit class (from GEE version)
+# rows is the number of rows in the combined dataset
+fitlist.orm <- function(object) {
+  # now make tidy version
+  sum_tidy <- tibble(term = names(object$coefficients),
+                        estimate = object$coefficients,
+                        std.error = sqrt(diag(object$var)),
+                        nobs = object$stats[["Obs"]])
+  sum_tidy
+}
+
+# now make glanced list with rows n.clusters, max.cluster.size, and nobs
+glanced.orm <- function(object, maxC) {
+  data.frame(n.clusters = object$clusterInfo$n,
+             max.cluster.size = maxC,
+             nobs = object$stats[["Obs"]])
+}
+
+# barnard rubin function pulled directly from mice code https://rdrr.io/cran/mice/src/R/barnard.rubin.R
+barnard.rubin <- function(m, b, t, dfcom = 999999) {
+  lambda <- (1 + 1 / m) * b / t
+  lambda[lambda < 1e-04] <- 1e-04
+  dfold <- (m - 1) / lambda^2
+  dfobs <- (dfcom + 1) / (dfcom + 3) * dfcom * (1 - lambda)
+  dfold * dfobs / (dfold + dfobs)
+}
+
+# obs is the number of observations, maxC is the max cluster size
+pool.orm <- function(object, obs, maxC) {
+  call <- paste0("pool(object = ")
+  # based on pool.fitlist from https://rdrr.io/cran/mice/src/R/pool.R
+  p <- map_df(object, ~ fitlist.orm(.x))
+  
+  # we don't want group_by to change the order of the terms
+  p <- p %>% mutate(term = factor(term, levels = unique(term)))
+  
+  pooled <- p %>%
+    group_by(term) %>%
+    summarise(
+      m = n(),
+      qbar = mean(estimate),
+      ubar = mean(std.error^2),
+      b = var(estimate),
+      t = ubar + (1 + 1 / m) * b,
+      dfcom = obs,
+      df = barnard.rubin(m, b, t, dfcom),
+      riv = (1 + 1 / m) * b / ubar,
+      lambda = (1 + 1 / m) * b / t,
+      fmi = (riv + 2 / (df + 3)) / (riv + 1)
+    )
+  pooled <- data.frame(pooled)
+  names(pooled)[names(pooled) == "qbar"] <- "estimate"
+  
+  # based on https://rdrr.io/cran/mice/src/R/get.df.R
+  g <- map_df(object, ~ glanced.orm(.x, maxC))
+  
+  # finally need make mipo object to work with mice summary function
+  mipo.orm <- list(m = pooled$m[1],
+                  pooled = pooled,
+                  glanced = g)
+  class(mipo.orm) <- c("mipo", "data.frame")
+  mipo.orm
+}
+
+
+# need to write function for GEEmd list $cov.beta[2] is what I'm interested in, since I only care about the intervention estimate :)
+# function to pool GEE.md object for covariate of interest
+pool_md2_fem <- function(GEE_obj, GEE_sum, MD_obj){
+  # using Rubin's rules from https://bookdown.org/mwheymans/bookmi/rubins-rules.html
+  # if m is the number of imputations
+  # vw = 1/m * sum(se^2)
+  # vb = sum(pooled beta - beta in each imputed dataset)^2 / (m - 1)
+  # vtotal = vw + vb+ vb/m
+  # se = sqrt(vtotal)
+
+  # m
+  m <- length(MD_obj)
+  # first calculate vw
+  vw <- (1 / m) * sum(map_df(MD_obj, ~ .x$cov.beta[2]))
+  # then calculate vb
+  num_vb <- map_df(GEE_obj, ~ .x$coefficients[2]) %>% # pull out intervention coefficients from imputed datasets
+    mutate(overall.coef = GEE_sum$estimate[2], 
+          diff = (overall.coef - group.femaleIntervention)^2) %>% # add difference between overall coefficient and coefficient from each dataset
+    pull(diff) %>% sum() # pull out that column and sum it
+  vb <- num_vb / (m - 1)
+  # now calculate vtotal
+  vtotal <- vw + vb + (vb / m)
+  out <- sqrt(vtotal)
+  out
+}
+
+pool_md2_m <- function(GEE_obj, GEE_sum, MD_obj){
+  # using Rubin's rules from https://bookdown.org/mwheymans/bookmi/rubins-rules.html
+  # if m is the number of imputations
+  # vw = 1/m * sum(se^2)
+  # vb = sum(pooled beta - beta in each imputed dataset)^2 / (m - 1)
+  # vtotal = vw + vb+ vb/m
+  # se = sqrt(vtotal)
+
+  # m
+  m <- length(MD_obj)
+  # first calculate vw
+  vw <- (1 / m) * sum(map_df(MD_obj, ~ .x$cov.beta[2]))
+  # then calculate vb
+  num_vb <- map_df(GEE_obj, ~ .x$coefficients[2]) %>% # pull out intervention coefficients from imputed datasets
+    mutate(overall.coef = GEE_sum$estimate[2], 
+          diff = (overall.coef - group.maleIntervention)^2) %>% # add difference between overall coefficient and coefficient from each dataset
+    pull(diff) %>% sum() # pull out that column and sum it
+  vb <- num_vb / (m - 1)
+  # now calculate vtotal
+  vtotal <- vw + vb + (vb / m)
+  out <- sqrt(vtotal)
+  out
+}
+
+```
+
+### Unadjusted
+
+#### Females
+
+```{r prim_un_f}
+# start with unadjusted analysis
+
+# 6 months
+prim_un6_f <- complete(imp_fem, "all") %>%
+  map(~ robcov(
+      orm(f_ua_form6, data = .x, x = TRUE, y = TRUE),
+      cluster = .x$clinic.female)
+      )
+
+# can pool with mice functions for GEE
+prim_un6_f_sum <- prim_un6_f %>%
+  pool.orm(., obs = nrow(complete(imp_fem, 1)), maxC = 5) %>%
+  summary()
+prim_un6_f_sum
+
+# test <- fit.mult.impute(formula = f_ua_form6, orm, imp_fem, data = fem_fin)
+# test1 <- update(test, x = TRUE, y = TRUE)
+# test2 <- robcov(test1, cluster = fem_fin$clinic.female) #I think this is getting too small a se because not pooling across imputations, pooling afterwards
+
+# make table
+prim_un6_tab_f <- prim_un6_f_sum %>%
+  filter(term == "group.female=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Unadjusted 6 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_un6_tab_f
+
+# 18 months
+prim_un18_f <- complete(imp_fem, "all") %>%
+  map(~ robcov(
+      orm(f_ua_form18, data = .x, x = TRUE, y = TRUE),
+      cluster = .x$clinic.female)
+      )
+
+# can pool with mice functions for GEE
+prim_un18_f_sum <- prim_un18_f %>%
+  pool.orm(., obs = nrow(complete(imp_fem, 1)), maxC = 5) %>%
+  summary()
+prim_un18_f_sum
+
+# make table
+prim_un18_tab_f <- prim_un18_f_sum %>%
+  filter(term == "group.female=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Unadjusted 15-18 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_un18_tab_f
+
+fem_un <- rbind(prim_un6_tab_f, prim_un18_tab_f)
+fem_un
+```
+
+#### Males
+
+```{r prim_un_m}
+# start with unadjusted analysis
+
+# 6 months
+prim_un6_m <- complete(imp_m, "all") %>%
+  map(~ robcov(
+      orm(m_ua_form6, data = .x, x = TRUE, y = TRUE),
+      cluster = .x$clinic.male)
+      )
+
+# can pool with mice functions for GEE
+prim_un6_m_sum <- prim_un6_m %>%
+  pool.orm(., obs = nrow(complete(imp_m, 1)), maxC = 5) %>%
+  summary()
+prim_un6_m_sum
+
+# make table
+prim_un6_tab_m <- prim_un6_m_sum %>%
+  filter(term == "group.male=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Unadjusted 6 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_un6_tab_m
+
+# 18 months
+prim_un18_m <- complete(imp_m, "all") %>%
+  map(~ robcov(
+      orm(m_ua_form18, data = .x, x = TRUE, y = TRUE),
+      cluster = .x$clinic.male)
+      )
+
+# can pool with mice functions for GEE
+prim_un18_m_sum <- prim_un18_m %>%
+  pool.orm(., obs = nrow(complete(imp_m, 1)), maxC = 5) %>%
+  summary()
+prim_un18_m_sum
+
+# make table
+prim_un18_tab_m <- prim_un18_m_sum %>%
+  filter(term == "group.male=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Unadjusted 15-18 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_un18_tab_m
+
+m_un <- rbind(prim_un6_tab_m, prim_un18_tab_m)
+m_un
+```
+
+### Adjusted
+
+#### Females
+
+```{r prim_ad_f}
+# Start with females
+
+# 6 months
+prim_a6_f <- complete(imp_fem, "all") %>%
+  map(~ robcov(
+      orm(f_a_form6, data = .x, x = TRUE, y = TRUE),
+      cluster = .x$clinic.female)
+      )
+
+# can pool with mice functions for GEE
+prim_a6_f_sum <- prim_a6_f %>%
+  pool.orm(., obs = nrow(complete(imp_fem, 1)), maxC = 5) %>%
+  summary()
+prim_a6_f_sum
+
+# make table
+prim_a6_tab_f <- prim_a6_f_sum %>%
+  filter(term == "group.female=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Adjusted 6 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_a6_tab_f
+
+# 18 months
+prim_a18_f <- complete(imp_fem, "all") %>%
+  map(~ robcov(
+      orm(f_a_form18, data = .x, x = TRUE, y = TRUE),
+      cluster = .x$clinic.female)
+      )
+
+# can pool with mice functions for GEE
+prim_a18_f_sum <- prim_a18_f %>%
+  pool.orm(., obs = nrow(complete(imp_fem, 1)), maxC = 5) %>%
+  summary()
+prim_a18_f_sum
+
+# make table
+prim_a18_tab_f <- prim_a18_f_sum %>%
+  filter(term == "group.female=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Adjusted 15-18 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_a18_tab_f
+
+fem_a <- rbind(prim_a6_tab_f, prim_a18_tab_f)
+fem_a
+```
+#### Males
+
+```{r prim_ad_m}
+# start with unadjusted analysis
+
+# 6 months
+prim_a6_m <- complete(imp_m, "all") %>%
+  map(~ robcov(
+      orm(m_a_form6, data = .x, x = TRUE, y = TRUE),
+      cluster = .x$clinic.male)
+      )
+
+# can pool with mice functions for GEE
+prim_a6_m_sum <- prim_a6_m %>%
+  pool.orm(., obs = nrow(complete(imp_m, 1)), maxC = 5) %>%
+  summary()
+prim_a6_m_sum
+
+# make table
+prim_a6_tab_m <- prim_a6_m_sum %>%
+  filter(term == "group.male=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Adjusted 6 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_a6_tab_m
+
+# 18 months
+prim_a18_m <- complete(imp_m, "all") %>%
+  map(~ robcov(
+      orm(m_a_form18, data = .x, x = TRUE, y = TRUE),
+      cluster = .x$clinic.male)
+      )
+
+# can pool with mice functions for GEE
+prim_a18_m_sum <- prim_a18_m %>%
+  pool.orm(., obs = nrow(complete(imp_m, 1)), maxC = 5) %>%
+  summary()
+prim_a18_m_sum
+
+# make table
+prim_a18_tab_m <- prim_a18_m_sum %>%
+  filter(term == "group.male=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Adjusted 15-18 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_a18_tab_m
+
+m_a <- rbind(prim_a6_tab_m, prim_a18_tab_m)
+m_a
+```
+
+## Sensitivity Analyses
+
+### Dichotomous Outcome
+
+#### Females
+
+```{r prim_dich_f}
+# start with unadjusted analysis
+
+# 6 months
+
+# gee across imputed datasets
+prim_dich6_fem <- complete(imp_fem, "all") %>%
+  map(~ gee(formula = f_dich_form6,
+            id = clinic.female,
+            data = .x,
+            family = binomial,
+            corstr = "independence")) 
+
+# pool
+prim_dich6_fem_sum <- prim_dich6_fem %>% 
+  pool() %>%
+  summary()
+
+# MD variance correction
+md_dich6_f <- complete(imp_fem, "all") %>%
+  map(~ GEE.var.md(formula = f_dich_form6,
+           family = binomial,
+           id = "clinic.female",
+           data = .x %>% filter(!is.na(.x$dich6)),
+           corstr = "independence")) 
+
+# make table
+prim_dich6_tab_fem <- prim_dich6_fem_sum %>% 
+  filter(term == "group.femaleIntervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Dichotomous 6 months (MD corrected)",
+         md_se = pool_md2_fem(GEE_obj = prim_dich6_fem, GEE_sum = prim_dich6_fem_sum, MD_obj = md_dich6_f),
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)),
+         md_lb = exp(estimate - (1.96*md_se)),
+         md_ub = exp(estimate + (1.96*md_se)))
+prim_dich6_tab_fem 
+
+# 18 months
+# gee across imputed datasets
+prim_dich18_fem <- complete(imp_fem, "all") %>%
+  map(~ gee(formula = f_dich_form18,
+            id = clinic.female,
+            data = .x,
+            family = binomial,
+            corstr = "independence")) 
+
+# pool
+prim_dich18_fem_sum <- prim_dich18_fem %>% 
+  pool() %>%
+  summary()
+
+# MD variance correction
+md_dich18_f <- complete(imp_fem, "all") %>%
+  map(~ GEE.var.md(formula = f_dich_form18,
+           family = binomial,
+           id = "clinic.female",
+           data = .x %>% filter(!is.na(.x$dich18)),
+           corstr = "independence")) 
+
+# make table
+prim_dich18_tab_fem <- prim_dich18_fem_sum %>% 
+  filter(term == "group.femaleIntervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Dichotomous 15-18 months (MD corrected)",
+         md_se = pool_md2_fem(GEE_obj = prim_dich6_fem, GEE_sum = prim_dich6_fem_sum, MD_obj = md_dich6_f),
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)),
+         md_lb = exp(estimate - (1.96*md_se)),
+         md_ub = exp(estimate + (1.96*md_se)))
+prim_dich18_tab_fem 
+
+fem_dich <- rbind(prim_dich6_tab_fem, prim_dich18_tab_fem)
+fem_dich 
+```
+
+#### Males
+
+```{r prim_dich_m}
+# start with unadjusted analysis
+
+# 6 months
+
+# gee across imputed datasets
+prim_dich6_m <- complete(imp_m, "all") %>%
+  map(~ gee(formula = m_dich_form6,
+            id = clinic.male,
+            data = .x,
+            family = binomial,
+            corstr = "independence")) 
+
+# pool
+prim_dich6_m_sum <- prim_dich6_m %>% 
+  pool() %>%
+  summary()
+
+# MD variance correction
+md_dich6_m <- complete(imp_m, "all") %>%
+  map(~ GEE.var.md(formula = m_dich_form6,
+           family = binomial,
+           id = "clinic.male",
+           data = .x %>% filter(!is.na(.x$dich6)),
+           corstr = "independence")) 
+
+# make table
+prim_dich6_tab_m <- prim_dich6_m_sum %>% 
+  filter(term == "group.maleIntervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Dichotomous 6 months (MD corrected)",
+         md_se = pool_md2_m(GEE_obj = prim_dich6_m, GEE_sum = prim_dich6_m_sum, MD_obj = md_dich6_m),
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)),
+         md_lb = exp(estimate - (1.96*md_se)),
+         md_ub = exp(estimate + (1.96*md_se)))
+prim_dich6_tab_m 
+
+# 18 months
+# gee across imputed datasets
+prim_dich18_m <- complete(imp_m, "all") %>%
+  map(~ gee(formula = m_dich_form18,
+            id = clinic.male,
+            data = .x,
+            family = binomial,
+            corstr = "independence")) 
+
+# pool
+prim_dich18_m_sum <- prim_dich18_m %>% 
+  pool() %>%
+  summary()
+
+# MD variance correction
+md_dich18_m <- complete(imp_m, "all") %>%
+  map(~ GEE.var.md(formula = m_dich_form18,
+           family = binomial,
+           id = "clinic.male",
+           data = .x %>% filter(!is.na(.x$dich18)),
+           corstr = "independence")) 
+
+# make table
+prim_dich18_tab_m <- prim_dich18_m_sum %>% 
+  filter(term == "group.maleIntervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Dichotomous 15-18 months (MD corrected)",
+         md_se = pool_md2_m(GEE_obj = prim_dich6_m, GEE_sum = prim_dich6_m_sum, MD_obj = md_dich6_m),
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)),
+         md_lb = exp(estimate - (1.96*md_se)),
+         md_ub = exp(estimate + (1.96*md_se)))
+prim_dich18_tab_m 
+
+m_dich <- rbind(prim_dich6_tab_m, prim_dich18_tab_m)
+m_dich 
+```
+### Complete Case Scenario
+
+#### Females
+
+```{r prim_cc_f}
+# start with unadjusted analysis
+
+# 6 months
+prim_cc6_f <- complete(imp_fem, "all") %>%
+  map(~ robcov(
+      orm(f_ua_form6, data = .x %>% filter(!is.na(phq9_6m_cat.female)), x = TRUE, y = TRUE),
+      cluster = .x %>% filter(!is.na(phq9_6m_cat.female)) %>% pull(clinic.female))
+      )
+
+# can pool with mice functions for GEE
+prim_cc6_f_sum <- prim_cc6_f %>%
+  pool.orm(., obs = nrow(complete(imp_fem, 1) %>% filter(!is.na(phq9_6m_cat.female))), maxC = 5) %>%
+  summary()
+prim_cc6_f_sum
+
+# make table
+prim_cc6_tab_f <- prim_cc6_f_sum %>%
+  filter(term == "group.female=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Complete Case, 6 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_cc6_tab_f
+
+# 18 months
+prim_cc18_f <- complete(imp_fem, "all") %>%
+  map(~ robcov(
+      orm(f_ua_form18, data = .x %>% filter(!is.na(phq9_18m_cat.female)), x = TRUE, y = TRUE),
+      cluster = .x %>% filter(!is.na(phq9_18m_cat.female)) %>% pull(clinic.female))
+      )
+
+# can pool with mice functions for GEE
+prim_cc18_f_sum <- prim_cc18_f %>%
+  pool.orm(., obs = nrow(complete(imp_fem, 1)), maxC = 5) %>%
+  summary()
+prim_cc18_f_sum
+
+# make table
+prim_cc18_tab_f <- prim_cc18_f_sum %>%
+  filter(term == "group.female=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Complete Case, 15-18 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_cc18_tab_f
+
+fem_cc <- rbind(prim_cc6_tab_f, prim_cc18_tab_f)
+fem_cc
+```
+
+#### Males
+
+```{r prim_cc_m}
+# start with unadjusted analysis
+
+# 6 months
+prim_cc6_m <- complete(imp_m, "all") %>%
+  map(~ robcov(
+      orm(m_ua_form6, data = .x %>% filter(!is.na(phq9_6m_cat.male)), x = TRUE, y = TRUE),
+      cluster = .x %>% filter(!is.na(phq9_6m_cat.male)) %>% pull(clinic.male))
+      )
+
+# can pool with mice functions for GEE
+prim_cc6_m_sum <- prim_cc6_m %>%
+  pool.orm(., obs = nrow(complete(imp_m, 1)), maxC = 5) %>%
+  summary()
+prim_cc6_m_sum
+
+# make table
+prim_cc6_tab_m <- prim_cc6_m_sum %>%
+  filter(term == "group.male=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Complete Case, 6 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_cc6_tab_m
+
+# 18 months
+prim_cc18_m <- complete(imp_m, "all") %>%
+  map(~ robcov(
+      orm(m_ua_form18, data = .x %>% filter(!is.na(phq9_18m_cat.male)), x = TRUE, y = TRUE),
+      cluster = .x %>% filter(!is.na(phq9_18m_cat.male)) %>% pull(clinic.male))
+      )
+
+# can pool with mice functions for GEE
+prim_cc18_m_sum <- prim_cc18_m %>%
+  pool.orm(., obs = nrow(complete(imp_m, 1)), maxC = 5) %>%
+  summary()
+prim_cc18_m_sum
+
+# make table
+prim_cc18_tab_m <- prim_cc18_m_sum %>%
+  filter(term == "group.male=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Complete Case, 15-18 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_cc18_tab_m
+
+m_cc <- rbind(prim_cc6_tab_m, prim_cc18_tab_m)
+m_cc
+```
+
+### Missing Scenario
+
+#### Females
+
+```{r prim_miss_f}
+# start with unadjusted analysis
+
+# 6 months
+prim_miss6_f <- complete(imp_fem, "all") %>%
+  map(~ robcov(
+      orm(f_miss_form6, data = .x, x = TRUE, y = TRUE),
+      cluster = .x$clinic.female)
+      )
+
+# can pool with mice functions for GEE
+prim_miss6_f_sum <- prim_miss6_f %>%
+  pool.orm(., obs = nrow(complete(imp_fem, 1)), maxC = 5) %>%
+  summary()
+prim_miss6_f_sum
+
+# make table
+prim_miss6_tab_f <- prim_miss6_f_sum %>%
+  filter(term == "group.female=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Missing Scenario, 6 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_miss6_tab_f
+
+# 18 months
+prim_miss18_f <- complete(imp_fem, "all") %>%
+  map(~ robcov(
+      orm(f_miss_form18, data = .x, x = TRUE, y = TRUE),
+      cluster = .x$clinic.female)
+      )
+
+# can pool with mice functions for GEE
+prim_miss18_f_sum <- prim_miss18_f %>%
+  pool.orm(., obs = nrow(complete(imp_fem, 1)), maxC = 5) %>%
+  summary()
+prim_miss18_f_sum
+
+# make table
+prim_miss18_tab_f <- prim_miss18_f_sum %>%
+  filter(term == "group.female=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Missing Scenario, 15-18 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_miss18_tab_f
+
+fem_miss <- rbind(prim_miss6_tab_f, prim_miss18_tab_f)
+fem_miss
+```
+
+#### Males
+
+```{r prim_miss_m}
+# start with unadjusted analysis
+
+# 6 months
+prim_miss6_m <- complete(imp_m, "all") %>%
+  map(~ robcov(
+      orm(m_miss_form6, data = .x, x = TRUE, y = TRUE),
+      cluster = .x$clinic.male)
+      )
+
+# can pool with mice functions for GEE
+prim_miss6_m_sum <- prim_miss6_m %>%
+  pool.orm(., obs = nrow(complete(imp_m, 1)), maxC = 5) %>%
+  summary()
+prim_miss6_m_sum
+
+# make table
+prim_miss6_tab_m <- prim_miss6_m_sum %>%
+  filter(term == "group.male=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Missing Scenario, 6 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_miss6_tab_m
+
+# 18 months
+prim_miss18_m <- complete(imp_m, "all") %>%
+  map(~ robcov(
+      orm(m_miss_form18, data = .x, x = TRUE, y = TRUE),
+      cluster = .x$clinic.male)
+      )
+
+# can pool with mice functions for GEE
+prim_miss18_m_sum <- prim_miss18_m %>%
+  pool.orm(., obs = nrow(complete(imp_m, 1)), maxC = 5) %>%
+  summary()
+prim_miss18_m_sum
+
+# make table
+prim_miss18_tab_m <- prim_miss18_m_sum %>%
+  filter(term == "group.male=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "Missing Scenario, 15-18 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_miss18_tab_m
+
+m_miss <- rbind(prim_miss6_tab_m, prim_miss18_tab_m)
+m_miss
+```
+
+### COVID-19
+
+#### Females
+
+```{r prim_cov_f}
+# start with unadjusted analysis
+
+# 6 months
+prim_cov6_f <- complete(imp_fem, "all") %>%
+  map(~ robcov(
+      orm(f_a_form6, data = .x %>% filter(cov.female == 1), x = TRUE, y = TRUE),
+      cluster = .x %>% filter(cov.female == 1) %>% pull(clinic.female))
+      )
+
+# can pool with mice functions for GEE
+prim_cov6_f_sum <- prim_cov6_f %>%
+  pool.orm(., obs = nrow(complete(imp_fem, 1)), maxC = 5) %>%
+  summary()
+prim_cov6_f_sum
+
+# make table
+prim_cov6_tab_f <- prim_cov6_f_sum %>%
+  filter(term == "group.female=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "COVID, 6 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_cov6_tab_f
+
+# 18 months
+prim_cov18_f <- complete(imp_fem, "all") %>%
+  map(~ robcov(
+      orm(f_a_form18, data = .x %>% filter(cov.female == 1), x = TRUE, y = TRUE),
+      cluster = .x %>% filter(cov.female == 1) %>% pull(clinic.female))
+      )
+
+# can pool with mice functions for GEE
+prim_cov18_f_sum <- prim_cov18_f %>%
+  pool.orm(., obs = nrow(complete(imp_fem, 1)), maxC = 5) %>%
+  summary()
+prim_cov18_f_sum
+
+# make table
+prim_cov18_tab_f <- prim_cov18_f_sum %>%
+  filter(term == "group.female=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "COVID, 15-18 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_cov18_tab_f
+
+fem_cov <- rbind(prim_cov6_tab_f, prim_cov18_tab_f)
+fem_cov
+```
+
+#### Males
+
+```{r prim_un_f}
+# start with unadjusted analysis
+
+# 6 months
+prim_cov6_m <- complete(imp_m, "all") %>%
+  map(~ robcov(
+      orm(m_a_form6, data = .x %>% filter(cov.male == 1), x = TRUE, y = TRUE),
+      cluster = .x %>% filter(cov.male == 1) %>% pull(clinic.male))
+      )
+
+# can pool with mice functions for GEE
+prim_cov6_m_sum <- prim_cov6_m %>%
+  pool.orm(., obs = nrow(complete(imp_m, 1)), maxC = 5) %>%
+  summary()
+prim_cov6_m_sum
+
+# make table
+prim_cov6_tab_m <- prim_cov6_m_sum %>%
+  filter(term == "group.male=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "COVID, 6 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_cov6_tab_m
+
+# 18 months
+prim_cov18_m <- complete(imp_m, "all") %>%
+  map(~ robcov(
+      orm(m_a_form18, data = .x %>% filter(cov.male == 1), x = TRUE, y = TRUE),
+      cluster = .x %>% filter(cov.male == 1) %>% pull(clinic.male))
+      )
+
+# can pool with mice functions for GEE
+prim_cov18_m_sum <- prim_cov18_m %>%
+  pool.orm(., obs = nrow(complete(imp_m, 1)), maxC = 5) %>%
+  summary()
+prim_cov18_m_sum
+
+# make table
+prim_cov18_tab_m <- prim_cov18_m_sum %>%
+  filter(term == "group.male=Intervention") %>%
+  select(term, estimate, std.error) %>%
+  mutate(term = "COVID, 15-18 months",
+         or = exp(estimate),
+         lb = exp(estimate - (1.96*std.error)),
+         ub = exp(estimate + (1.96*std.error)))
+prim_cov18_tab_m
+
+m_cov <- rbind(prim_cov6_tab_m, prim_cov18_tab_m)
+m_cov
+```
+
+## Figure 3: Forest Plot
+
+```{r fig 3, fig.width=10, fig.height=6}
+# create dataframe
+fig3_6mo <- tibble(Analysis = c("1) Unadjusted Analysis",
+                            "2) Adjusted Analysis",
+                            "3) Dichotomous Outcome",
+                            "4) Complete Case",
+                            "5) Missing Scenario",
+                            "6) Pre-COVID-19 Completion"),
+               fem_or = c(fem_un$or[1],
+                        fem_a$or[1],
+                        fem_dich$or[1],
+                        fem_cc$or[1],
+                        fem_miss$or[1],
+                        fem_cov$or[1]),
+               fem_lb = c(fem_un$lb[1],
+                        fem_a$lb[1],
+                        fem_dich$md_lb[1],
+                        fem_cc$lb[1],
+                        fem_miss$lb[1],
+                        fem_cov$lb[1]),
+               fem_ub = c(fem_un$ub[1],
+                        fem_a$ub[1],
+                        fem_dich$md_ub[1],
+                        fem_cc$ub[1],
+                        fem_miss$ub[1],
+                        fem_cov$ub[1]),
+               m_or = c(m_un$or[1],
+                        m_a$or[1],
+                        m_dich$or[1],
+                        m_cc$or[1],
+                        m_miss$or[1],
+                        m_cov$or[1]),
+               m_lb = c(m_un$lb[1],
+                        m_a$lb[1],
+                        m_dich$md_lb[1],
+                        m_cc$lb[1],
+                        m_miss$lb[1],
+                        m_cov$lb[1]),
+               m_ub = c(m_un$ub[1],
+                        m_a$ub[1],
+                        m_dich$md_ub[1],
+                        m_cc$ub[1],
+                        m_miss$ub[1],
+                        m_cov$ub[1])) %>%
+  mutate(fem_ci = paste0(round(fem_or, 2), " (", round(fem_lb, 2), ", ", round(fem_ub, 2), ")"),
+         m_ci = paste0(round(m_or, 2), " (", round(m_lb, 2), ", ", round(m_ub, 2), ")"))
+
+fig3_18mo <- tibble(Analysis = c("1) Unadjusted Analysis",
+                            "2) Adjusted Analysis",
+                            "3) Dichotomous Outcome",
+                            "4) Complete Case",
+                            "5) Missing Scenario",
+                            "6) Pre-COVID-19 Completion"),
+               fem_or = c(fem_un$or[2],
+                        fem_a$or[2],
+                        fem_dich$or[2],
+                        fem_cc$or[2],
+                        fem_miss$or[2],
+                        fem_cov$or[2]),
+               fem_lb = c(fem_un$lb[2],
+                        fem_a$lb[2],
+                        fem_dich$md_lb[2],
+                        fem_cc$lb[2],
+                        fem_miss$lb[2],
+                        fem_cov$lb[2]),
+               fem_ub = c(fem_un$ub[2],
+                        fem_a$ub[2],
+                        fem_dich$md_ub[2],
+                        fem_cc$ub[2],
+                        fem_miss$ub[2],
+                        fem_cov$ub[2]),
+               m_or = c(m_un$or[2],
+                        m_a$or[2],
+                        m_dich$or[2],
+                        m_cc$or[2],
+                        m_miss$or[2],
+                        m_cov$or[2]),
+               m_lb = c(m_un$lb[2],
+                        m_a$lb[2],
+                        m_dich$md_lb[2],
+                        m_cc$lb[2],
+                        m_miss$lb[2],
+                        m_cov$lb[2]),
+               m_ub = c(m_un$ub[2],
+                        m_a$ub[2],
+                        m_dich$md_ub[2],
+                        m_cc$ub[2],
+                        m_miss$ub[2],
+                        m_cov$ub[2])) %>%
+  mutate(fem_ci = paste0(round(fem_or, 2), " (", round(fem_lb, 2), ", ", round(fem_ub, 2), ")"),
+         m_ci = paste0(round(m_or, 2), " (", round(m_lb, 2), ", ", round(m_ub, 2), ")"))
+
+# now make a forestplot
+tabletext <- cbind(c("", "", "6-Month PHQ-9 Score", fig3_6mo$Analysis, "15–18-Month PHQ-9 Score", fig3_18mo$Analysis), 
+                   c("Female",  "Odds Ratio (95% CI)", "", fig3_6mo$fem_ci, "", fig3_18mo$fem_ci), 
+                   c("Male",  "Odds Ratio (95% CI)", "", fig3_6mo$m_ci, "", fig3_18mo$m_ci))
+
+# make forest plot
+#quartz(type = "pdf", file = "figs/fig3.pdf", height = 6, width = 10)
+forestplot(tabletext,
+           mean = cbind(c(NA, NA, NA, fig3_6mo$fem_or, NA, fig3_18mo$fem_or),
+                        c(NA, NA, NA, fig3_6mo$m_or, NA, fig3_18mo$m_or)),
+           lower = cbind(c(NA, NA, NA, fig3_6mo$fem_lb, NA, fig3_18mo$fem_lb),
+                        c(NA, NA, NA, fig3_6mo$m_lb, NA, fig3_18mo$m_lb)),
+           upper = cbind(c(NA, NA, NA, fig3_6mo$fem_ub, NA, fig3_18mo$fem_ub),
+                        c(NA, NA, NA, fig3_6mo$m_ub, NA, fig3_18mo$m_ub)),
+           is.summary = c(TRUE, FALSE, TRUE, rep(FALSE, 6), TRUE, rep(FALSE, 6)),
+           xlog = TRUE,
+           xlab = "Adjusted Odds Ratio",
+           boxsize = 0.15,
+           align = "l",
+           vertices = TRUE,
+           vertices.height = 0.05,
+           col = fpColors(box = c("#f93800", "#64395f"),
+                          line = c("#f93800", "#64395f")),
+           legend_args = fpLegend(pos = list(x = 0.9, y = 0.85)),
+           legend = c("Female", "Male"),
+           hrzl_lines = list("2" = gpar(lwd=1, columns=1:4)),
+           txt_gp = fpTxtGp(cex=0.8, 
+                            label=gpar(fontfamily="Arial"), 
+                            ticks=gpar(cex=0.65),
+                            xlab=gpar(cex=0.7)))
+#dev.off()
+# embed the font
+#embed_fonts("figs/fig3.pdf")
+## Sample sizes
+#  6 months female: 1077, 1077, 754, 754, 1077, 312
+#  18 months female: 1077, 1077, 728, 728, 1077, 312
+#  6 months male: 1074, 1074, 754, 754, 1074, 311
+#  18 months male: 1074, 1074, 592, 592, 1074, 311
+```
+
+# Post-hoc Analyses
+
+## Interaction Between PHQ-9 and Social Support
+
+```{r, int_prep}
+# set dd
+dd <- datadist(wide)
+options(datadist = "dd")
+```
+
+### Females
+
+```{r int_fem}
+# 6 months
+prim_int6_f <- fit.mult.impute(formula = phq9_6m.female ~ group.female*rcs(socsup.female, 3) + rcs(day.female, 3) + rcs(age.female, 
+    3) + who.female + +edu_cat.female + rcs(stigma.female, 3) + rcs(phq9_b.male, 3),
+    orm, imp_fem, data = wide) %>% 
+  update(., x = TRUE, y = TRUE) %>%
+  robcov(., cluster = wide$clinic.female)
+
+# plot
+qu1 <- Quantile(prim_int6_f)
+med1 <- function(x) qu1(0.5, x)
+f6_pp <- ggplot(Predict(prim_int6_f, socsup.female, group.female, fun = med1)) + 
+  labs(title = "A) 6-Month Female",
+       caption = "") +
+  theme_pubclean() +
+  theme(text = element_text(family = "Arial")) +
+  scale_y_continuous(name = "Median PHQ-9 Score") +
+  scale_x_continuous(name = "Social Support") +
+  coord_cartesian(ylim = c(0, 8)) +
+  guides(color = guide_legend(title = "HoPS+ Group")) +
+  theme(plot.title = element_text(face = "bold"))
+
+# 18 months
+prim_int18_f <- fit.mult.impute(formula = phq9_18m.female ~ group.female*rcs(socsup.female, 3) + rcs(day.female, 3) + rcs(age.female, 
+    3) + who.female + +edu_cat.female + rcs(stigma.female, 3) + rcs(phq9_b.male, 3),
+    orm, imp_fem, data = wide) %>% 
+  update(., x = TRUE, y = TRUE) %>%
+  robcov(., cluster = wide$clinic.female)
+
+# plot
+qu1 <- Quantile(prim_int18_f)
+med1 <- function(x) qu1(0.5, x)
+f18_pp <- ggplot(Predict(prim_int18_f, socsup.female, group.female, fun = med1)) + 
+  labs(title = "B) 15–18-Month Female",
+       caption = "") +
+  theme_pubclean() +
+  theme(text = element_text(family = "Arial")) +
+  scale_y_continuous(name = "Median PHQ-9 Score") +
+  scale_x_continuous(name = "Social Support") +
+  coord_cartesian(ylim = c(0, 8)) +
+  guides(color = guide_legend(title = "HoPS+ Group")) +
+  theme(plot.title = element_text(face = "bold"))
+```
+
+### Males
+
+```{r int_fem}
+# 6 months
+prim_int6_m <- fit.mult.impute(formula = phq9_6m.male ~ group.male*rcs(socsup.male, 3) + rcs(day.male, 3) + rcs(age.male, 
+    3) + who.male + edu_cat.male + rcs(stigma.male, 3) + rcs(phq9_b.female, 3),
+    orm, imp_m, data = wide %>% filter(!is.na(clinic.male))) %>% 
+  update(., x = TRUE, y = TRUE) %>%
+  robcov(., cluster = wide %>% filter(!is.na(clinic.male)) %>% pull(clinic.male))
+
+# plot
+qu1 <- Quantile(prim_int6_m)
+med1 <- function(x) qu1(0.5, x)
+m6_pp <- ggplot(Predict(prim_int6_m, socsup.male, group.male, fun = med1)) + 
+  labs(title = "C) 6-Month Male",
+       caption = "") +
+  theme_pubclean() +
+  theme(text = element_text(family = "Arial")) +
+  scale_y_continuous(name = "Median PHQ-9 Score") +
+  scale_x_continuous(name = "Social Support") +
+  coord_cartesian(ylim = c(0, 8)) +
+  guides(color = guide_legend(title = "HoPS+ Group")) +
+  theme(plot.title = element_text(face = "bold"))
+
+# 18 months
+prim_int18_m <- fit.mult.impute(formula = phq9_18m.male ~ group.male*rcs(socsup.male, 3) + rcs(day.male, 3) + rcs(age.male, 
+    3) + who.male + edu_cat.male + rcs(stigma.male, 3) + rcs(phq9_b.female, 3),
+    orm, imp_m, data = wide %>% filter(!is.na(clinic.male))) %>% 
+  update(., x = TRUE, y = TRUE) %>%
+  robcov(., cluster = wide %>% filter(!is.na(clinic.male)) %>% pull(clinic.male))
+
+# plot
+qu1 <- Quantile(prim_int18_m)
+med1 <- function(x) qu1(0.5, x)
+m18_pp <- ggplot(Predict(prim_int18_m, socsup.male, group.male, fun = med1)) + 
+  labs(title = "D) 15–18-Month Male",
+       caption = "") +
+  theme_pubclean() +
+  theme(text = element_text(family = "Arial")) +
+  scale_y_continuous(name = "Median PHQ-9 Score") +
+  scale_x_continuous(name = "Social Support") +
+  coord_cartesian(ylim = c(0, 8)) +
+  guides(color = guide_legend(title = "HoPS+ Group")) +
+  theme(plot.title = element_text(face = "bold"))
+```
+
+### Plot
+
+```{r int_plot, fig.width=10, fig.height=8}
+ggarrange(f6_pp, f18_pp, m6_pp, m18_pp,
+          ncol = 2, nrow = 2, common.legend = TRUE, 
+          legend = "bottom")
+```
