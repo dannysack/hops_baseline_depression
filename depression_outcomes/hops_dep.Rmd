@@ -337,7 +337,7 @@ ggarrange(fig2.1, fig2.2, fig2.3, nrow = 1)
 
 ## Imputations
 
-```{r imps, eval = FALSE, fig.width=10, fig.height=10}
+```{r imp_setup}
 # subset to covariates for female and male models
 fem_fin <- wide %>% mutate(cov.female = ifelse(reg_date.female < "2018-07-26", 1, 0)) %>%
   select(age.female, day.female, group.female:arthx.female,
@@ -363,7 +363,9 @@ m_fin <- wide %>% mutate(cov.male = ifelse(reg_date.male < "2018-07-26", 1, 0)) 
          dich18 = ifelse(phq9_18m.male < 10, 0, 1),
          miss6 = ifelse(is.na(phq9_6m_cat.male), 0, phq9_6m_cat.male),
          miss18 = ifelse(is.na(phq9_18m_cat.male), 0, phq9_18m_cat.male))
+```
 
+```{r imps, eval = FALSE, fig.width=10, fig.height=10}
 # create predictor matricies
 predmat_f <- make.predictorMatrix(fem_fin)
 predmat_m <- make.predictorMatrix(m_fin)
@@ -495,7 +497,7 @@ m_miss_form18 <- formula(miss18 ~ group.male + rcs(day.male, 3) + rcs(age.male, 
 
 # pool orm models across imputations
 
-# first need to create tidy dataframe with 6 colums: term, estimate, std.error, statistic, p.value, and nobs (degrees of freedom) from MMLogit class (from GEE version)
+# first need to create tidy dataframe with 6 colums: term, estimate, std.error, statistic, p.value, and nobs (degrees of freedom)
 # rows is the number of rows in the combined dataset
 fitlist.orm <- function(object) {
   # now make tidy version
@@ -514,7 +516,7 @@ glanced.orm <- function(object, maxC) {
 }
 
 # barnard rubin function pulled directly from mice code https://rdrr.io/cran/mice/src/R/barnard.rubin.R
-barnard.rubin <- function(m, b, t, dfcom = 999999) {
+barnard.rubin <- function(m, b, t, dfcom = Inf) {
   lambda <- (1 + 1 / m) * b / t
   lambda[lambda < 1e-04] <- 1e-04
   dfold <- (m - 1) / lambda^2
@@ -632,9 +634,10 @@ prim_un6_f_sum <- prim_un6_f %>%
   summary()
 prim_un6_f_sum
 
-# test <- fit.mult.impute(formula = f_ua_form6, orm, imp_fem, data = fem_fin)
-# test1 <- update(test, x = TRUE, y = TRUE)
-# test2 <- robcov(test1, cluster = fem_fin$clinic.female) #I think this is getting too small a se because not pooling across imputations, pooling afterwards
+# how to get it to work with fit.mult.impute in Hmisc.5.0-2...will not redo all code...
+# need to set cluster to one imputed dataset instead of base dataset because of changes in the order
+# after splitting and re-joining imputations as done in this case to reduce effect modification
+# test2 <- fit.mult.impute(formula = f_ua_form6, orm, imp_fem, data = fem_fin, cluster = complete(imp_fem, 1)$clinic.female)
 
 # make table
 prim_un6_tab_f <- prim_un6_f_sum %>%
@@ -1012,7 +1015,7 @@ m_dich
 # 6 months
 prim_cc6_f <- complete(imp_fem, "all") %>%
   map(~ robcov(
-      orm(f_ua_form6, data = .x %>% filter(!is.na(phq9_6m_cat.female)), x = TRUE, y = TRUE),
+      orm(f_a_form6, data = .x %>% filter(!is.na(phq9_6m_cat.female)), x = TRUE, y = TRUE),
       cluster = .x %>% filter(!is.na(phq9_6m_cat.female)) %>% pull(clinic.female))
       )
 
@@ -1035,7 +1038,7 @@ prim_cc6_tab_f
 # 18 months
 prim_cc18_f <- complete(imp_fem, "all") %>%
   map(~ robcov(
-      orm(f_ua_form18, data = .x %>% filter(!is.na(phq9_18m_cat.female)), x = TRUE, y = TRUE),
+      orm(f_a_form18, data = .x %>% filter(!is.na(phq9_18m_cat.female)), x = TRUE, y = TRUE),
       cluster = .x %>% filter(!is.na(phq9_18m_cat.female)) %>% pull(clinic.female))
       )
 
@@ -1067,7 +1070,7 @@ fem_cc
 # 6 months
 prim_cc6_m <- complete(imp_m, "all") %>%
   map(~ robcov(
-      orm(m_ua_form6, data = .x %>% filter(!is.na(phq9_6m_cat.male)), x = TRUE, y = TRUE),
+      orm(m_a_form6, data = .x %>% filter(!is.na(phq9_6m_cat.male)), x = TRUE, y = TRUE),
       cluster = .x %>% filter(!is.na(phq9_6m_cat.male)) %>% pull(clinic.male))
       )
 
@@ -1090,7 +1093,7 @@ prim_cc6_tab_m
 # 18 months
 prim_cc18_m <- complete(imp_m, "all") %>%
   map(~ robcov(
-      orm(m_ua_form18, data = .x %>% filter(!is.na(phq9_18m_cat.male)), x = TRUE, y = TRUE),
+      orm(m_a_form18, data = .x %>% filter(!is.na(phq9_18m_cat.male)), x = TRUE, y = TRUE),
       cluster = .x %>% filter(!is.na(phq9_18m_cat.male)) %>% pull(clinic.male))
       )
 
@@ -1485,12 +1488,15 @@ options(datadist = "dd")
 ### Females
 
 ```{r int_fem}
+# datadist
+dd <- datadist(wide)
+options(datadist = "dd")
+
 # 6 months
-prim_int6_f <- fit.mult.impute(formula = phq9_6m.female ~ group.female*rcs(socsup.female, 3) + rcs(day.female, 3) + rcs(age.female, 
-    3) + who.female + +edu_cat.female + rcs(stigma.female, 3) + rcs(phq9_b.male, 3),
-    orm, imp_fem, data = wide) %>% 
-  update(., x = TRUE, y = TRUE) %>%
-  robcov(., cluster = wide$clinic.female)
+prim_int6_f <- fit.mult.impute(formula = phq9_6m.female ~ group.female*rcs(socsup.female, 3) + 
+                                 rcs(day.female, 3) + rcs(age.female, 3) + who.female + 
+                                 edu_cat.female + rcs(stigma.female, 3) + rcs(phq9_b.male, 3), orm,
+                               xtrans = imp_fem, data = fem_fin, cluster = complete(imp_fem, 1)$clinic.female)
 
 # plot
 qu1 <- Quantile(prim_int6_f)
@@ -1507,11 +1513,10 @@ f6_pp <- ggplot(Predict(prim_int6_f, socsup.female, group.female, fun = med1)) +
   theme(plot.title = element_text(face = "bold"))
 
 # 18 months
-prim_int18_f <- fit.mult.impute(formula = phq9_18m.female ~ group.female*rcs(socsup.female, 3) + rcs(day.female, 3) + rcs(age.female, 
-    3) + who.female + +edu_cat.female + rcs(stigma.female, 3) + rcs(phq9_b.male, 3),
-    orm, imp_fem, data = wide) %>% 
-  update(., x = TRUE, y = TRUE) %>%
-  robcov(., cluster = wide$clinic.female)
+prim_int18_f <- fit.mult.impute(formula = phq9_18m.female ~ group.female*rcs(socsup.female, 3) + 
+                                 rcs(day.female, 3) + rcs(age.female, 3) + who.female + 
+                                 edu_cat.female + rcs(stigma.female, 3) + rcs(phq9_b.male, 3), orm,
+                               xtrans = imp_fem, data = fem_fin, cluster = complete(imp_fem, 1)$clinic.female)
 
 # plot
 qu1 <- Quantile(prim_int18_f)
@@ -1526,17 +1531,18 @@ f18_pp <- ggplot(Predict(prim_int18_f, socsup.female, group.female, fun = med1))
   coord_cartesian(ylim = c(0, 8)) +
   guides(color = guide_legend(title = "HoPS+ Group")) +
   theme(plot.title = element_text(face = "bold"))
+
+ggarrange(f6_pp, f18_pp, common.legend = TRUE)
 ```
 
 ### Males
 
 ```{r int_fem}
 # 6 months
-prim_int6_m <- fit.mult.impute(formula = phq9_6m.male ~ group.male*rcs(socsup.male, 3) + rcs(day.male, 3) + rcs(age.male, 
-    3) + who.male + edu_cat.male + rcs(stigma.male, 3) + rcs(phq9_b.female, 3),
-    orm, imp_m, data = wide %>% filter(!is.na(clinic.male))) %>% 
-  update(., x = TRUE, y = TRUE) %>%
-  robcov(., cluster = wide %>% filter(!is.na(clinic.male)) %>% pull(clinic.male))
+prim_int6_m <- fit.mult.impute(formula = phq9_6m.male ~ group.male*rcs(socsup.male, 3) + 
+                                 rcs(day.male, 3) + rcs(age.male, 3) + who.male + 
+                                 edu_cat.male + rcs(stigma.male, 3) + rcs(phq9_b.female, 3), orm,
+                               xtrans = imp_m, data = m_fin, cluster = complete(imp_m, 1)$clinic.male)
 
 # plot
 qu1 <- Quantile(prim_int6_m)
@@ -1553,11 +1559,10 @@ m6_pp <- ggplot(Predict(prim_int6_m, socsup.male, group.male, fun = med1)) +
   theme(plot.title = element_text(face = "bold"))
 
 # 18 months
-prim_int18_m <- fit.mult.impute(formula = phq9_18m.male ~ group.male*rcs(socsup.male, 3) + rcs(day.male, 3) + rcs(age.male, 
-    3) + who.male + edu_cat.male + rcs(stigma.male, 3) + rcs(phq9_b.female, 3),
-    orm, imp_m, data = wide %>% filter(!is.na(clinic.male))) %>% 
-  update(., x = TRUE, y = TRUE) %>%
-  robcov(., cluster = wide %>% filter(!is.na(clinic.male)) %>% pull(clinic.male))
+prim_int18_m <- fit.mult.impute(formula = phq9_18m.male ~ group.male*rcs(socsup.male, 3) + 
+                                 rcs(day.male, 3) + rcs(age.male, 3) + who.male + 
+                                 edu_cat.male + rcs(stigma.male, 3) + rcs(phq9_b.female, 3), orm,
+                               xtrans = imp_m, data = m_fin, cluster = complete(imp_m, 1)$clinic.male)
 
 # plot
 qu1 <- Quantile(prim_int18_m)
@@ -1572,6 +1577,8 @@ m18_pp <- ggplot(Predict(prim_int18_m, socsup.male, group.male, fun = med1)) +
   coord_cartesian(ylim = c(0, 8)) +
   guides(color = guide_legend(title = "HoPS+ Group")) +
   theme(plot.title = element_text(face = "bold"))
+
+ggarrange(m6_pp, m18_pp, common.legend = TRUE)
 ```
 
 ### Plot
